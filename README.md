@@ -4,13 +4,13 @@ Tired of paid RTP queue plugins that lack essential features? This one is comple
 
 
 
-🚀 Version 2.0 – Fully Rewritten & Better Than Ever!
+## 🚀 Version 2.0 – Fully Rewritten & Better Than Ever!
 AdvancedRTPQueue has been completely rewritten from scratch, bringing major improvements, optimizations, and brand-new features! This update makes teleportation smoother, queues more efficient, and customization better than ever.
 
 
 
 
-✨ Why Choose AdvancedRTPQueue?
+## ✨ Why Choose AdvancedRTPQueue?
 
 
 ✅ Free & Unrestricted – Unlike others, this plugin is fully featured at no cost.
@@ -29,23 +29,13 @@ AdvancedRTPQueue has been completely rewritten from scratch, bringing major impr
 
 
 
-📺 Live Demo & Preview
+## 📺 Live Demo & Preview
+https://www.youtube.com/watch?v=i8UQa_Bku2M
 
 
 
 
-
-
-⚙ Configuration Preview (Highly Customizable)
-Modify everything easily in config.yml:
-
-
-Spoiler: config.yml
-
-
-
-
-📜 Commands & Permissions
+## 📜 Commands & Permissions
 This plugin is lightweight and comes with essential commands:
 
 /rtpqueue – Join the teleport queue. (Permission: rtpqueue.use)
@@ -54,7 +44,7 @@ This plugin is lightweight and comes with essential commands:
 
 
 
-🔧 Installation Guide
+## 🔧 Installation Guide
 1️⃣ Download the .jar file.
 2️⃣ Drop it into your /plugins/ folder.
 3️⃣ Restart your server.
@@ -64,7 +54,7 @@ This plugin is lightweight and comes with essential commands:
 
 
 
-❤️ Support This Project (Pay-What-You-Want)
+## ❤️ Support This Project (Pay-What-You-Want)
 This plugin is completely free, but maintaining it takes time and effort.
 All other RTP queue plugins on the market are paid and lack features. I was honestly shocked at how overpriced and underdeveloped they are.
 If you appreciate the work put into this plugin and want frequent updates, consider supporting me.
@@ -74,11 +64,11 @@ If you appreciate the work put into this plugin and want frequent updates, consi
 📩 shazabmustafa2@gmail.com
 
 Your support helps me keep this plugin updated & add more features!
-Click to expand...
 
 
-
-🔻 Download Now & Upgrade Your Server! 🔻
+## 🔻 Download Now & Upgrade Your Server! 🔻
 ​
 ✔ No need to pay for a low-quality plugin—get the best RTP queue plugin for free!
 🚀 Enhance your server today!
+
+# We accept pull requests!
