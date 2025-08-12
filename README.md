@@ -14,16 +14,27 @@ AdvancedRTPQueue has been completely rewritten from scratch, bringing major impr
 
 
 ✅ Free & Unrestricted – Unlike others, this plugin is fully featured at no cost.
+
 ✅ Smart Queue System – Players are automatically paired & teleported.
+
 ✅ Safe Teleportation – No lava, void, or unsafe spots.
+
 ✅ Fully Customizable – Edit messages, teleport settings, and sounds.
+
 ✅ Hex Color & Title Support – Modern RGB chat formatting support.
+
 ✅ Optimized & Lag-Free – Runs smoothly on any server version.
+
 ✅ Admin Reload Command – Modify settings without restarting.
+
 ✅ Queue Auto-Clear Feature – Prevents infinite queue waiting.
+
 ✅ Dynamic Sound System – Customize teleport & queue sounds.
+
 ✅ New Cancel Command – Players can now leave the queue with /rtpqueue cancel.
+
 ✅ Much More Essential Features – Enhancing server performance & player experience.
+
 ✅ No Dependencies Needed – Works standalone!
 
 
