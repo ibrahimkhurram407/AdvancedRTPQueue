@@ -50,16 +50,22 @@ https://www.youtube.com/watch?v=i8UQa_Bku2M
 This plugin is lightweight and comes with essential commands:
 
 /rtpqueue – Join the teleport queue. (Permission: rtpqueue.use)
+
 /rtpqueue cancel – Leave the queue. (Permission: rtpqueue.use)
+
 /rtpqueue reload – Reload the config without restarting. (Permission: rtpqueue.admin)
 
 
 
 ## 🔧 Installation Guide
 1️⃣ Download the .jar file.
+
 2️⃣ Drop it into your /plugins/ folder.
+
 3️⃣ Restart your server.
+
 4️⃣ Modify config.yml to fit your server needs.
+
 5️⃣ Enjoy the best RTP queue plugin for free!
 
 
