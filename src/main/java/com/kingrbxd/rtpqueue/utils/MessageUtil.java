@@ -100,10 +100,10 @@ public class MessageUtil {
     }
 
     /**
-     * Plays a sound for a player.
+     * Plays a sound for a player using a sound name from config.
      *
      * @param player The player to play the sound for
-     * @param sound  The sound to play
+     * @param sound  The sound name to play
      */
     public static void playSound(Player player, String sound) {
         if (sound == null || sound.isEmpty()) return;
@@ -114,5 +114,17 @@ public class MessageUtil {
         } catch (IllegalArgumentException e) {
             plugin.getLogger().warning("Invalid sound: " + sound);
         }
+    }
+
+    /**
+     * Plays a sound for a player using a Sound enum.
+     * Overloaded method to support direct Sound enum usage.
+     *
+     * @param player The player to play the sound for
+     * @param sound  The Sound enum to play
+     */
+    public static void playSound(Player player, Sound sound) {
+        if (sound == null) return;
+        player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
     }
 }
