@@ -7,7 +7,7 @@
 
     <groupId>com.kingrbxd</groupId>
     <artifactId>advancedrtpqueue</artifactId>
-    <version>2.0</version>
+    <version>2.1</version>
     <packaging>jar</packaging>
 
     <name>AdvancedRTPQueue</name>
@@ -72,6 +72,14 @@
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
         </repository>
+        <repository>
+            <id>glaremasters repo</id>
+            <url>https://repo.glaremasters.me/repository/towny/</url>
+        </repository>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -89,6 +97,31 @@
             <artifactId>bstats-bukkit</artifactId>
             <version>3.0.2</version>
             <scope>compile</scope>
+        </dependency>
+
+        <!-- GriefPrevention -->
+        <dependency>
+            <groupId>com.github.GriefPrevention</groupId>
+            <artifactId>GriefPrevention</artifactId>
+            <version>16.18.2</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Towny -->
+        <dependency>
+            <groupId>com.palmergames.bukkit.towny</groupId>
+            <artifactId>towny</artifactId>
+            <version>0.101.2.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- SaberFactions -->
+        <dependency>
+            <groupId>com.kingrbxd</groupId>
+            <artifactId>SaberFactions</artifactId>
+            <version>4.1.6-BETA</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/SaberFactions.jar</systemPath>
         </dependency>
     </dependencies>
 </project>
