@@ -32,7 +32,7 @@ cooldowns:
     worlds:
       # Set any cooldown to -1 to disable it for that specific world
       world: 128
-      world_the_nether: 600
+      world_nether: 600
       world_the_end: 300
 
 # ==========================
@@ -66,7 +66,7 @@ teleport:
     enabled: true
     worlds:
       nether:
-        name: "world_the_nether"
+        name: "world_nether"
         display-name: "Nether"
         permission: "rtpqueue.world.nether"  # Use "none" for no permission
         min-x: -200
