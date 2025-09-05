@@ -6,6 +6,7 @@ import com.kingrbxd.rtpqueue.handlers.QueueHandler;
 import com.kingrbxd.rtpqueue.handlers.TeleportHandler;
 import com.kingrbxd.rtpqueue.handlers.WorldManager;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
+import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -57,12 +58,23 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
                     MessageUtil.sendMessage(player, "&cUsage: /rtpqueue world <worldname>");
                     return true;
                 }
-                handleWorldQueue(player, args[1]);
+
+                // Handle world names with spaces by joining all remaining arguments
+                String worldName = args[1];
+                if (args.length > 2) {
+                    StringBuilder worldNameBuilder = new StringBuilder(args[1]);
+                    for (int i = 2; i < args.length; i++) {
+                        worldNameBuilder.append(" ").append(args[i]);
+                    }
+                    worldName = worldNameBuilder.toString();
+                }
+
+                handleWorldQueue(player, worldName);
                 break;
 
             default:
                 MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.invalid-command"));
-                MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
+                MessageUtil.playSound(player, Sound.valueOf(plugin.getConfig().getString("sounds.error")));
                 break;
         }
 
@@ -171,13 +183,39 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             return filterCompletions(completions, args[0]);
         }
 
-        // Tab complete for worlds
+        // Tab complete for worlds - return full display names including spaces
         if (args.length == 2 && args[0].equalsIgnoreCase("world")) {
             List<WorldManager.WorldSettings> accessibleWorlds = worldManager.getAccessibleWorlds(player);
             for (WorldManager.WorldSettings world : accessibleWorlds) {
                 completions.add(world.getDisplayName());
             }
             return filterCompletions(completions, args[1]);
+        }
+
+        // Special handling for display names with spaces
+        // If they've started typing a world name with spaces, continue suggesting it
+        if (args.length > 2 && args[0].equalsIgnoreCase("world")) {
+            // Reconstruct what they've typed so far
+            StringBuilder partialName = new StringBuilder(args[1]);
+            for (int i = 2; i < args.length; i++) {
+                partialName.append(" ").append(args[i-1]);
+            }
+
+            // Get worlds that might match this partial name
+            String partialNameStr = partialName.toString();
+            List<WorldManager.WorldSettings> accessibleWorlds = worldManager.getAccessibleWorlds(player);
+            for (WorldManager.WorldSettings world : accessibleWorlds) {
+                String displayName = world.getDisplayName();
+                if (displayName.toLowerCase().startsWith(partialNameStr.toLowerCase())) {
+                    // For multi-word names, suggest the next word only
+                    String[] parts = displayName.split(" ");
+                    if (parts.length > args.length - 1) {
+                        completions.add(parts[args.length - 1]);
+                    }
+                }
+            }
+
+            return filterCompletions(completions, args[args.length - 1]);
         }
 
         return completions;
