@@ -1,0 +1,133 @@
+# =====================================
+#  AdvancedRTPQueue Configuration
+# =====================================
+# Configure queue size, teleport settings, messages, and sounds.
+
+# ==========================
+# Queue Settings
+# ==========================
+queue:
+  required-players: 2      # Players needed to start teleportation
+  clear-interval: 300      # Queue resets if inactive (seconds)
+
+# ==========================
+# Cooldown Settings
+# ==========================
+cooldowns:
+  # Global cooldown for entering queue (in seconds)
+  # Set to -1 to disable this cooldown
+  queue-join: 60
+
+  # Cooldown before teleporting after match is found (in seconds)
+  # Players will have this time to prepare before teleport
+  # Set to -1 to disable this cooldown
+  pre-teleport: 5
+
+  # Cancel teleport if player moves during pre-teleport cooldown
+  cancel-on-move: true
+
+  # Enable per-world cooldowns (overrides global queue-join cooldown)
+  per-world-cooldown:
+    enabled: false
+    worlds:
+      # Set any cooldown to -1 to disable it for that specific world
+      world: 128
+      world_the_nether: 600
+      world_the_end: 300
+
+# ==========================
+# Claim Protection
+# ==========================
+claim-protection:
+  enabled: true
+  # Supported plugins: GriefPrevention, Factions (SaberFactions/MassiveCraft), Towny
+  # Will not teleport players into claimed areas
+  plugins:
+    grief-prevention: true
+    factions: true      # Works with SaberFactions and other MassiveCraft-based Factions plugins
+    towny: true
+
+# ==========================
+# Teleportation Settings
+# ==========================
+teleport:
+  # Main world configuration
+  default-world: "world"
+  default-world-display-name: "Overworld"  # Display name for the default world
+  min-x: -500
+  max-x: 500
+  min-z: -500
+  max-z: 500
+  safe-teleport: true       # Ensures safe landing spots
+  max-teleport-attempts: 10 # Retries for safe teleport location
+
+  # Multi-world support
+  other-worlds:
+    enabled: true
+    worlds:
+      nether:
+        name: "world_the_nether"
+        display-name: "Nether"
+        permission: "rtpqueue.world.nether"  # Use "none" for no permission
+        min-x: -200
+        max-x: 200
+        min-z: -200
+        max-z: 200
+        safe-teleport: true
+        max-teleport-attempts: 5
+
+      end:
+        name: "world_the_end"
+        display-name: "The End"
+        permission: "none"  # No permission needed
+        min-x: -300
+        max-x: 300
+        min-z: -300
+        max-z: 300
+        safe-teleport: true
+        max-teleport-attempts: 8
+
+  # Unsafe blocks for teleportation
+  unsafe-blocks:
+    - LAVA
+    - WATER
+    - FIRE
+    - CACTUS
+    - MAGMA_BLOCK
+    - VOID_AIR
+    - CAVE_AIR  # Added cave air as potentially unsafe
+
+# ==========================
+# Messages
+# ==========================
+messages:
+  join-queue: "&#00ff00✔ &aYou joined the queue."
+  waiting-for-opponent: "&#0099ff⏳ &bWaiting for a match..."
+  leave-queue: "&#ff0000❌ &cYou left the queue."
+  already-in-queue: "&#ffa500⚠ &eYou're already in the queue!"
+  not-in-queue: "&#ff4444⚠ &cYou're not in the queue."
+  opponent-found: "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds..."
+  teleporting-title: "&#ff6600🚀 &6Teleporting..."
+  teleporting-subtitle: "&#ff3333🔥 &cGet ready!"
+  teleported: "&#00ff00✅ &aTeleported!"
+  no-permission: "&#ff5555⛔ &cNo permission."
+  reload: "&#00cc00🔄 &aConfig reloaded!"
+  queue-cleared: "&#ff3300🚀 &cQueue cleared."
+  invalid-world: "&#ff0000⚠ &cError: Invalid world!"
+  invalid-command: "&#ff5500❓ &cUnknown command. Try &e/rtpqueue &cor &e/rtpqueue cancel."
+  teleport-failed: "&#ff0000❌ &cTeleport failed! No safe spot."
+  cooldown-active: "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds."
+  world-teleport: "&#00ccff🌎 &bTeleporting to {world}..."
+  move-cancelled: "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."
+  claim-protected: "&#ff3333🛡 &cCannot teleport to claimed land."
+
+# ==========================
+# Sounds
+# ==========================
+sounds:
+  queue-join: ENTITY_PLAYER_LEVELUP
+  teleport: ENTITY_ENDERMAN_TELEPORT
+  error: ENTITY_VILLAGER_NO
+  queue-cleared: ENTITY_ENDER_DRAGON_GROWL
+  opponent-found: ENTITY_EXPERIENCE_ORB_PICKUP
+  cooldown: BLOCK_NOTE_BLOCK_PLING
