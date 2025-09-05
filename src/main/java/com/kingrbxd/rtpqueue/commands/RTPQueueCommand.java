@@ -137,8 +137,12 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
             return;
         }
-        plugin.reloadConfig();
+
+        // Use the centralized reload method
+        plugin.reload();
+
         MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.reload"));
+        MessageUtil.sendMessage(player, "&e⚠ For complete configuration changes, a server restart is recommended.");
         MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-cleared"));
     }
 

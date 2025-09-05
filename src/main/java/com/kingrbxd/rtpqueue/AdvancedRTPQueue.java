@@ -9,6 +9,7 @@ import com.kingrbxd.rtpqueue.utils.ConfigUtil;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 public final class AdvancedRTPQueue extends JavaPlugin {
     private static AdvancedRTPQueue instance;
@@ -16,6 +17,7 @@ public final class AdvancedRTPQueue extends JavaPlugin {
     private CooldownManager cooldownManager;
     private WorldManager worldManager;
     private ClaimProtectionHandler claimProtectionHandler;
+    private BukkitTask queueClearTask;
 
     @Override
     public void onEnable() {
@@ -24,16 +26,7 @@ public final class AdvancedRTPQueue extends JavaPlugin {
 
         // Initialize utils first
         MessageUtil.initialize(this);
-        ConfigUtil.loadMessages();
-
-        // Initialize handlers
-        queueHandler = new QueueHandler();
-        cooldownManager = new CooldownManager(this);
-        worldManager = new WorldManager(this);
-        claimProtectionHandler = new ClaimProtectionHandler(this);
-
-        // Check for claim protection plugins
-        claimProtectionHandler.setupProtection();
+        loadConfiguration();
 
         // Register event listeners
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(), this);
@@ -42,20 +35,85 @@ public final class AdvancedRTPQueue extends JavaPlugin {
         // Register main command
         registerCommand("rtpqueue", new RTPQueueCommand(this));
 
-        // Start queue clearing task
-        int clearInterval = getConfig().getInt("queue.clear-interval", 300);
-        new QueueClearTask(this).runTaskTimer(this, clearInterval * 20L, clearInterval * 20L);
-
         // Start bStats
         new Metrics(this, 25138);
 
         getLogger().info("AdvancedRTPQueue v2.0 by KingRBxD enabled!");
     }
 
+    /**
+     * Load or reload all configuration and initialize handlers
+     */
+    private void loadConfiguration() {
+        // Load messages
+        ConfigUtil.loadMessages();
+
+        // Initialize or reinitialize handlers
+        if (queueHandler == null) {
+            queueHandler = new QueueHandler();
+        }
+
+        if (cooldownManager == null) {
+            cooldownManager = new CooldownManager(this);
+        }
+
+        if (worldManager == null) {
+            worldManager = new WorldManager(this);
+        } else {
+            worldManager.reload();
+        }
+
+        if (claimProtectionHandler == null) {
+            claimProtectionHandler = new ClaimProtectionHandler(this);
+        }
+
+        // Check for claim protection plugins
+        claimProtectionHandler.setupProtection();
+
+        // Set up queue clearing task
+        setupQueueClearTask();
+    }
+
+    /**
+     * Set up the queue clear task (cancels existing task if running)
+     */
+    private void setupQueueClearTask() {
+        // Cancel existing task if it exists
+        if (queueClearTask != null) {
+            queueClearTask.cancel();
+        }
+
+        // Start queue clearing task with updated interval
+        int clearInterval = getConfig().getInt("queue.clear-interval", 300);
+        queueClearTask = new QueueClearTask(this).runTaskTimer(this, clearInterval * 20L, clearInterval * 20L);
+        getLogger().info("Queue clear task scheduled: every " + clearInterval + " seconds");
+    }
+
     @Override
     public void onDisable() {
-        queueHandler.clearQueue();
+        if (queueHandler != null) {
+            queueHandler.clearQueue();
+        }
+
+        if (queueClearTask != null) {
+            queueClearTask.cancel();
+        }
+
         getLogger().info("AdvancedRTPQueue disabled!");
+    }
+
+    /**
+     * Reloads the plugin configuration and all handlers.
+     */
+    public void reload() {
+        // Reload config file
+        reloadConfig();
+
+        // Reload all configuration and handlers
+        loadConfiguration();
+
+        getLogger().info("AdvancedRTPQueue configuration reloaded.");
+        getLogger().info("Note: For some settings like cooldowns and message formats, a server restart is recommended.");
     }
 
     /**

@@ -13,17 +13,33 @@ import java.util.Map;
 
 public class WorldManager {
     private final AdvancedRTPQueue plugin;
-    private final Map<String, WorldSettings> worldSettings = new HashMap<>();
-    private final String defaultWorldName;
+    private Map<String, WorldSettings> worldSettings = new HashMap<>();
+    private String defaultWorldName;
 
     public WorldManager(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
-        this.defaultWorldName = plugin.getConfig().getString("teleport.default-world", "world");
+        loadWorlds();
+    }
+
+    /**
+     * Reloads world settings from config.
+     */
+    public void reload() {
+        worldSettings.clear();
+        loadWorlds();
+        plugin.getLogger().info("Reloaded world settings - found " + worldSettings.size() + " worlds");
+    }
+
+    /**
+     * Loads all world settings from config.
+     */
+    private void loadWorlds() {
+        defaultWorldName = plugin.getConfig().getString("teleport.default-world", "world");
 
         // Load default world settings
         WorldSettings defaultWorld = new WorldSettings(
                 defaultWorldName,
-                plugin.getConfig().getString("teleport.default-world-display-name", "Overworld"), // Use display name from config
+                plugin.getConfig().getString("teleport.default-world-display-name", "Overworld"),
                 null,
                 plugin.getConfig().getInt("teleport.min-x", -500),
                 plugin.getConfig().getInt("teleport.max-x", 500),
@@ -33,6 +49,7 @@ public class WorldManager {
                 plugin.getConfig().getInt("teleport.max-teleport-attempts", 10)
         );
         worldSettings.put(defaultWorldName, defaultWorld);
+        plugin.getLogger().info("Loaded default world settings for: " + defaultWorld.getDisplayName() + " (" + defaultWorldName + ")");
 
         // Load additional worlds if enabled
         if (plugin.getConfig().getBoolean("teleport.other-worlds.enabled", false)) {

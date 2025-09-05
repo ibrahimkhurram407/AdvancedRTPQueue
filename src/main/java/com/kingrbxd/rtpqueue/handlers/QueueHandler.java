@@ -7,7 +7,6 @@ public class QueueHandler {
     private final Set<Player> queue = new HashSet<>();
     private final Map<Player, String> worldQueue = new HashMap<>();
 
-    @SuppressWarnings("unused")
     public void addToQueue(Player player) {
         queue.add(player);
     }
@@ -28,7 +27,6 @@ public class QueueHandler {
         return queue.contains(player);
     }
 
-    @SuppressWarnings("unused")
     public String getQueueWorld(Player player) {
         return worldQueue.get(player);
     }
@@ -42,7 +40,6 @@ public class QueueHandler {
         return queue.size();
     }
 
-    @SuppressWarnings("unused")
     public List<Player> getQueue() {
         return new ArrayList<>(queue);
     }

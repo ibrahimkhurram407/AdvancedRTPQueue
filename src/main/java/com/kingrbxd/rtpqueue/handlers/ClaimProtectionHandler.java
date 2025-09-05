@@ -27,6 +27,9 @@ public class ClaimProtectionHandler {
      * Setup hooks for claim protection plugins.
      */
     public void setupProtection() {
+        // Clear existing checkers
+        claimCheckers.clear();
+
         if (!plugin.getConfig().getBoolean("claim-protection.enabled", true)) {
             plugin.getLogger().info("Claim protection is disabled in config.");
             return;

@@ -1,25 +1,77 @@
 package com.kingrbxd.rtpqueue.utils;
 
+import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
-import org.bukkit.Bukkit;
-import org.bukkit.command.CommandSender;
-import org.bukkit.plugin.Plugin;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MessageUtil {
+    private static AdvancedRTPQueue plugin;
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
-    private static Plugin plugin;
+    private static final Map<String, String> cachedMessages = new HashMap<>();
 
-    public static void initialize(Plugin pl) {
-        plugin = pl;
+    /**
+     * Initialize the message util with plugin instance
+     *
+     * @param pluginInstance The main plugin instance
+     */
+    public static void initialize(AdvancedRTPQueue pluginInstance) {
+        plugin = pluginInstance;
     }
 
     /**
-     * Sends a formatted message to a player with hex color support.
+     * Clear all cached messages to force reloading from config
+     */
+    public static void clearCachedMessages() {
+        cachedMessages.clear();
+    }
+
+    /**
+     * Converts color codes and hex color codes in a string.
+     *
+     * @param message The message to colorize
+     * @return The colorized message
+     */
+    public static String colorize(String message) {
+        if (message == null) return "";
+
+        // Check if message is already cached
+        if (cachedMessages.containsKey(message)) {
+            return cachedMessages.get(message);
+        }
+
+        // Convert hex colors (&#RRGGBB format)
+        Matcher matcher = HEX_PATTERN.matcher(message);
+        StringBuffer buffer = new StringBuffer();
+
+        while (matcher.find()) {
+            String hex = matcher.group(1);
+            matcher.appendReplacement(buffer, ChatColor.of("#" + hex).toString());
+        }
+
+        matcher.appendTail(buffer);
+
+        // Convert traditional color codes
+        String colorized = ChatColor.translateAlternateColorCodes('&', buffer.toString());
+
+        // Cache the result
+        cachedMessages.put(message, colorized);
+
+        return colorized;
+    }
+
+    /**
+     * Sends a colorized message to a player.
+     *
+     * @param player  The player to send the message to
+     * @param message The message to send
      */
     public static void sendMessage(Player player, String message) {
         if (message == null || message.isEmpty()) return;
@@ -27,70 +79,40 @@ public class MessageUtil {
     }
 
     /**
-     * Sends a formatted message to the console or a player.
-     */
-    public static void sendMessage(CommandSender sender, String message) {
-        if (message == null || message.isEmpty()) return;
-        sender.sendMessage(colorize(message));
-    }
-
-    /**
      * Sends a title and subtitle to a player.
+     *
+     * @param player   The player to send the title to
+     * @param title    The title to send
+     * @param subtitle The subtitle to send
      */
     public static void sendTitle(Player player, String title, String subtitle) {
-        if (title == null) title = "";
-        if (subtitle == null) subtitle = "";
         player.sendTitle(colorize(title), colorize(subtitle), 10, 40, 10);
     }
 
     /**
      * Sends an action bar message to a player.
+     *
+     * @param player  The player to send the action bar to
+     * @param message The message to send
      */
     public static void sendActionBar(Player player, String message) {
-        if (message == null || message.isEmpty()) return;
-        Bukkit.getScheduler().runTask(plugin, () ->
-                player.spigot().sendMessage(net.md_5.bungee.api.chat.TextComponent.fromLegacyText(colorize(message)))
-        );
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(colorize(message)));
     }
 
     /**
-     * Plays a sound for a player, supporting both Sound objects and sound names.
+     * Plays a sound for a player.
+     *
+     * @param player The player to play the sound for
+     * @param sound  The sound to play
      */
-    public static void playSound(Player player, Object soundInput) {
-        if (soundInput == null) return;
+    public static void playSound(Player player, String sound) {
+        if (sound == null || sound.isEmpty()) return;
 
         try {
-            Sound sound;
-            if (soundInput instanceof Sound) {
-                sound = (Sound) soundInput; // ✅ Supports direct Sound objects
-            } else if (soundInput instanceof String) {
-                sound = Sound.valueOf(((String) soundInput).toUpperCase()); // ✅ Supports sound names from config.yml
-            } else {
-                System.out.println("[AdvancedRTPQueue] Invalid sound input: " + soundInput);
-                return;
-            }
-
-            player.playSound(player.getLocation(), sound, 1.0F, 1.0F);
+            Sound bukkitSound = Sound.valueOf(sound);
+            player.playSound(player.getLocation(), bukkitSound, 1.0f, 1.0f);
         } catch (IllegalArgumentException e) {
-            System.out.println("[AdvancedRTPQueue] Invalid sound: " + soundInput);
+            plugin.getLogger().warning("Invalid sound: " + sound);
         }
-    }
-
-    /**
-     * Converts hex color codes (&#RRGGBB) to Minecraft color codes.
-     */
-    public static String colorize(String message) {
-        if (message == null) return "";
-        Matcher matcher = HEX_PATTERN.matcher(message);
-        StringBuffer buffer = new StringBuffer();
-
-        while (matcher.find()) {
-            String hexCode = matcher.group(1);
-            ChatColor hexColor = ChatColor.of("#" + hexCode);
-            matcher.appendReplacement(buffer, hexColor.toString());
-        }
-        matcher.appendTail(buffer);
-
-        return ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
 }
