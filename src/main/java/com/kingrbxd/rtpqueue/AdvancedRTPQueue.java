@@ -6,6 +6,7 @@ import com.kingrbxd.rtpqueue.listeners.*;
 import com.kingrbxd.rtpqueue.placeholders.PlaceholderManager;
 import com.kingrbxd.rtpqueue.tasks.QueueClearTask;
 import com.kingrbxd.rtpqueue.utils.ConfigManager;
+import com.kingrbxd.rtpqueue.utils.ConfigMigrator;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -39,6 +40,12 @@ public class AdvancedRTPQueue extends JavaPlugin {
 
         getLogger().info("Starting AdvancedRTPQueue v" + getDescription().getVersion() + "...");
 
+        // Handle configuration migration - THIS IS ALREADY THERE
+        if (!handleConfigMigration()) {
+            disablePlugin("Failed to handle configuration migration");
+            return;
+        }
+
         // Initialize configuration
         if (!initializeConfig()) {
             disablePlugin("Failed to initialize configuration");
@@ -68,6 +75,21 @@ public class AdvancedRTPQueue extends JavaPlugin {
 
         getLogger().info("AdvancedRTPQueue v" + getDescription().getVersion() + " enabled successfully!");
         getLogger().info("Features: Enhanced teleportation, claim protection, PlaceholderAPI, extensive customization");
+    }
+
+    /**
+     * Handle automatic config migration from old formats - THIS METHOD IS ALREADY INCLUDED
+     */
+    private boolean handleConfigMigration() {
+        try {
+            ConfigMigrator migrator = new ConfigMigrator(this);
+            migrator.checkAndMigrate();
+            return true;
+        } catch (Exception e) {
+            getLogger().severe("Config migration failed: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
     }
 
     @Override
