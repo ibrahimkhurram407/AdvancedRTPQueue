@@ -1,31 +1,25 @@
 package com.kingrbxd.rtpqueue.handlers;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
-import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Complete world manager with all features implemented
+ * FIXED: World manager with proper world name handling
  */
 public class WorldManager {
     private final AdvancedRTPQueue plugin;
-    private final Map<String, WorldSettings> worldSettings = new ConcurrentHashMap<>();
-    private final Map<String, String> displayNames = new ConcurrentHashMap<>();
+    private final Map<String, WorldSettings> worldSettings = new HashMap<>();
 
     public WorldManager(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
         loadWorldSettings();
     }
 
-    /**
-     * Load world settings from configuration
-     */
     public void loadWorldSettings() {
         worldSettings.clear();
-        displayNames.clear();
 
         // Load default world
         String defaultWorld = plugin.getConfigManager().getString("teleport.default-world", "world");
@@ -33,152 +27,164 @@ public class WorldManager {
 
         WorldSettings defaultSettings = new WorldSettings(
                 defaultWorld,
+                stripColorCodes(defaultDisplayName), // FIXED: Strip color codes for tab completion
                 defaultDisplayName,
+                null, // No special permission for default world
                 plugin.getConfigManager().getInt("teleport.min-x", -1000),
                 plugin.getConfigManager().getInt("teleport.max-x", 1000),
                 plugin.getConfigManager().getInt("teleport.min-z", -1000),
                 plugin.getConfigManager().getInt("teleport.max-z", 1000),
                 plugin.getConfigManager().getInt("teleport.min-y", 60),
                 plugin.getConfigManager().getInt("teleport.max-y", 250),
-                plugin.getConfigManager().getBoolean("teleport.safe-teleport", true),
-                plugin.getConfigManager().getInt("teleport.max-teleport-attempts", 15),
-                null
+                plugin.getConfigManager().getInt("teleport.max-attempts", 100)
         );
 
         worldSettings.put(defaultWorld, defaultSettings);
-        displayNames.put(defaultWorld, defaultDisplayName);
 
-        // Load other worlds if enabled
-        if (plugin.getConfigManager().getBoolean("teleport.other-worlds.enabled")) {
-            loadOtherWorlds();
-        }
+        // Load other worlds
+        if (plugin.getConfigManager().getBoolean("teleport.other-worlds.enabled", false)) {
+            ConfigurationSection othersSection = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds");
+            if (othersSection != null) {
+                for (String key : othersSection.getKeys(false)) {
+                    ConfigurationSection worldSection = othersSection.getConfigurationSection(key);
+                    if (worldSection != null) {
+                        String worldName = worldSection.getString("name");
+                        String displayName = worldSection.getString("display-name", "&7" + key);
 
-        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-            plugin.getLogger().info("Loaded settings for " + worldSettings.size() + " worlds");
-        }
-    }
+                        if (worldName != null) {
+                            WorldSettings settings = new WorldSettings(
+                                    worldName,
+                                    stripColorCodes(displayName), // FIXED: Strip color codes for tab completion
+                                    displayName,
+                                    worldSection.getString("permission"),
+                                    worldSection.getInt("min-x", -500),
+                                    worldSection.getInt("max-x", 500),
+                                    worldSection.getInt("min-z", -500),
+                                    worldSection.getInt("max-z", 500),
+                                    worldSection.getInt("min-y", 30),
+                                    worldSection.getInt("max-y", 120),
+                                    worldSection.getInt("max-attempts", 50)
+                            );
 
-    /**
-     * Load other world configurations
-     */
-    private void loadOtherWorlds() {
-        if (!plugin.getConfig().contains("teleport.other-worlds.worlds")) {
-            return;
-        }
-
-        Set<String> worldKeys = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds").getKeys(false);
-
-        for (String worldKey : worldKeys) {
-            String basePath = "teleport.other-worlds.worlds." + worldKey + ".";
-
-            String worldName = plugin.getConfig().getString(basePath + "name");
-            String displayName = plugin.getConfig().getString(basePath + "display-name", worldName);
-            String permission = plugin.getConfig().getString(basePath + "permission");
-
-            if (worldName == null || worldName.isEmpty()) {
-                continue;
+                            // FIXED: Use the key name (nether, end) instead of bukkit world name
+                            worldSettings.put(key, settings);
+                        }
+                    }
+                }
             }
-
-            WorldSettings settings = new WorldSettings(
-                    worldName,
-                    displayName,
-                    plugin.getConfig().getInt(basePath + "min-x", -500),
-                    plugin.getConfig().getInt(basePath + "max-x", 500),
-                    plugin.getConfig().getInt(basePath + "min-z", -500),
-                    plugin.getConfig().getInt(basePath + "max-z", 500),
-                    plugin.getConfig().getInt(basePath + "min-y", 60),
-                    plugin.getConfig().getInt(basePath + "max-y", 250),
-                    plugin.getConfig().getBoolean(basePath + "safe-teleport", true),
-                    plugin.getConfig().getInt(basePath + "max-teleport-attempts", 15),
-                    permission
-            );
-
-            worldSettings.put(worldName, settings);
-            displayNames.put(worldName, displayName);
         }
+
+        plugin.getLogger().info("Loaded " + worldSettings.size() + " world configurations");
     }
 
     /**
-     * Get world settings for a world
+     * FIXED: Strip color codes for tab completion
+     */
+    private String stripColorCodes(String text) {
+        if (text == null) return "";
+        return text.replaceAll("&[0-9a-fk-or]", "").replaceAll("&#[0-9a-fA-F]{6}", "");
+    }
+
+    /**
+     * Check if world is valid and available
+     */
+    public boolean isValidWorld(String worldName) {
+        if (!worldSettings.containsKey(worldName)) return false;
+
+        WorldSettings settings = worldSettings.get(worldName);
+        World bukkitWorld = plugin.getServer().getWorld(settings.getBukkitWorldName());
+        return bukkitWorld != null;
+    }
+
+    /**
+     * Get world settings by key name (nether, end, etc.)
      */
     public WorldSettings getWorldSettings(String worldName) {
         return worldSettings.get(worldName);
     }
 
     /**
-     * Get display name for a world
+     * Get display name for world
      */
     public String getDisplayName(String worldName) {
-        return displayNames.getOrDefault(worldName, worldName);
+        WorldSettings settings = worldSettings.get(worldName);
+        return settings != null ? settings.getDisplayName() : worldName;
     }
 
     /**
-     * Check if world is valid and configured
-     */
-    public boolean isValidWorld(String worldName) {
-        return worldSettings.containsKey(worldName) && Bukkit.getWorld(worldName) != null;
-    }
-
-    /**
-     * Get all valid world names
-     */
-    public Set<String> getValidWorldNames() {
-        Set<String> validWorlds = new HashSet<>();
-        for (String worldName : worldSettings.keySet()) {
-            if (Bukkit.getWorld(worldName) != null) {
-                validWorlds.add(worldName);
-            }
-        }
-        return validWorlds;
-    }
-
-    /**
-     * Get all configured world names
+     * FIXED: Get all available world names (keys like 'nether', 'end', not bukkit names)
      */
     public Set<String> getAllWorldNames() {
-        return new HashSet<>(worldSettings.keySet());
+        Set<String> availableWorlds = new HashSet<>();
+        for (Map.Entry<String, WorldSettings> entry : worldSettings.entrySet()) {
+            // Only include worlds that actually exist
+            if (isValidWorld(entry.getKey())) {
+                availableWorlds.add(entry.getKey());
+            }
+        }
+        return availableWorlds;
     }
 
     /**
-     * World settings class
+     * FIXED: Get world names for tab completion (clean names without color codes)
+     */
+    public Set<String> getTabCompleteWorldNames() {
+        Set<String> tabNames = new HashSet<>();
+        for (Map.Entry<String, WorldSettings> entry : worldSettings.entrySet()) {
+            if (isValidWorld(entry.getKey())) {
+                WorldSettings settings = entry.getValue();
+                tabNames.add(settings.getCleanDisplayName()); // Clean name for tab completion
+            }
+        }
+        return tabNames;
+    }
+
+    public Set<String> getValidWorldNames() {
+        return getAllWorldNames();
+    }
+
+    /**
+     * World settings data class
      */
     public static class WorldSettings {
-        private final String name;
+        private final String bukkitWorldName;
+        private final String cleanDisplayName;
         private final String displayName;
-        private final int minX, maxX, minZ, maxZ, minY, maxY;
-        private final boolean safeteleport;
-        private final int maxTeleportAttempts;
         private final String permission;
+        private final int minX, maxX, minZ, maxZ, minY, maxY;
+        private final int maxTeleportAttempts;
 
-        public WorldSettings(String name, String displayName, int minX, int maxX, int minZ, int maxZ,
-                             int minY, int maxY, boolean safeteleport, int maxTeleportAttempts, String permission) {
-            this.name = name;
+        public WorldSettings(String bukkitWorldName, String cleanDisplayName, String displayName, String permission,
+                             int minX, int maxX, int minZ, int maxZ, int minY, int maxY, int maxTeleportAttempts) {
+            this.bukkitWorldName = bukkitWorldName;
+            this.cleanDisplayName = cleanDisplayName;
             this.displayName = displayName;
+            this.permission = permission;
             this.minX = minX;
             this.maxX = maxX;
             this.minZ = minZ;
             this.maxZ = maxZ;
             this.minY = minY;
             this.maxY = maxY;
-            this.safeteleport = safeteleport;
             this.maxTeleportAttempts = maxTeleportAttempts;
-            this.permission = permission;
         }
 
-        public String getName() { return name; }
+        // Getters
+        public String getBukkitWorldName() { return bukkitWorldName; }
+        public String getName() { return bukkitWorldName; }
+        public String getCleanDisplayName() { return cleanDisplayName; }
         public String getDisplayName() { return displayName; }
+        public String getPermission() { return permission; }
         public int getMinX() { return minX; }
         public int getMaxX() { return maxX; }
         public int getMinZ() { return minZ; }
         public int getMaxZ() { return maxZ; }
         public int getMinY() { return minY; }
         public int getMaxY() { return maxY; }
-        public boolean isSafeTelepor() { return safeteleport; }
         public int getMaxTeleportAttempts() { return maxTeleportAttempts; }
-        public String getPermission() { return permission; }
 
         public World getBukkitWorld() {
-            return Bukkit.getWorld(name);
+            return org.bukkit.Bukkit.getWorld(bukkitWorldName);
         }
     }
 }

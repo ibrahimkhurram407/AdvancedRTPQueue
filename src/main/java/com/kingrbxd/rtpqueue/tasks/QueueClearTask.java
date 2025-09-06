@@ -6,6 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -27,14 +28,15 @@ public class QueueClearTask implements Runnable {
         // Clean up offline players from queues
         int removedOffline = plugin.getQueueHandler().removeOfflinePlayers();
 
-        // Get current queue information
-        Map<String, Object> queueInfo = plugin.getQueueHandler().getQueueInformation();
+        // Use QueueHandler summaries instead of mis-typed getQueueInformation()
+        int totalQueuedPlayers = plugin.getQueueHandler().getTotalQueuedPlayers();
+        Set<String> activeWorlds = plugin.getQueueHandler().getActiveWorlds();
 
         if (plugin.getConfigManager().getBoolean("plugin.debug")) {
             plugin.getLogger().info("Queue maintenance completed:");
             plugin.getLogger().info("- Removed offline players: " + removedOffline);
-            plugin.getLogger().info("- Total queued players: " + queueInfo.get("totalQueuedPlayers"));
-            plugin.getLogger().info("- Active worlds: " + queueInfo.get("activeWorlds"));
+            plugin.getLogger().info("- Total queued players: " + totalQueuedPlayers);
+            plugin.getLogger().info("- Active worlds: " + activeWorlds);
         }
 
         Map<String, Integer> queueSizes = plugin.getQueueHandler().getAllQueueSizes();

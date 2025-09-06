@@ -7,507 +7,379 @@ import org.bukkit.entity.Player;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
- * Complete queue handler - streamlined without max-queue-size limit
- * Author: KingRBxD | Updated: 2025-09-06
+ * QueueHandler - manages per-world queues and player -> queue mapping.
+ *
+ * Added utility methods requested by other parts of the plugin:
+ * - removeOfflinePlayers()
+ * - getQueueInformation()
+ * - getQueueInformation(String world)
+ * - getPlayersInWorldQueue(String world)
+ * - getOnlinePlayersInWorldQueue(String world)
+ * - clearWorldQueue(String world)
  */
 public class QueueHandler {
     private final AdvancedRTPQueue plugin;
-    private final Map<String, List<UUID>> worldQueues = new ConcurrentHashMap<>();
-    private final Map<UUID, String> playerQueueWorld = new ConcurrentHashMap<>();
+    private final Map<String, Set<UUID>> worldQueues = new ConcurrentHashMap<>();
+    private final Map<UUID, String> playerWorldMap = new ConcurrentHashMap<>();
 
     public QueueHandler(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
-        initializeQueues();
     }
 
     /**
-     * Initialize queues for all configured worlds
-     */
-    private void initializeQueues() {
-        // Initialize default world queue
-        String defaultWorld = plugin.getConfigManager().getString("teleport.default-world", "world");
-        worldQueues.put(defaultWorld, Collections.synchronizedList(new ArrayList<>()));
-
-        // Initialize other world queues if enabled
-        if (plugin.getConfigManager().getBoolean("teleport.other-worlds.enabled")) {
-            Set<String> configuredWorlds = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds").getKeys(false);
-            for (String worldKey : configuredWorlds) {
-                String worldName = plugin.getConfig().getString("teleport.other-worlds.worlds." + worldKey + ".name");
-                if (worldName != null && !worldName.isEmpty()) {
-                    worldQueues.put(worldName, Collections.synchronizedList(new ArrayList<>()));
-                }
-            }
-        }
-
-        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-            plugin.getLogger().info("Initialized queues for worlds: " + worldQueues.keySet());
-        }
-    }
-
-    /**
-     * Add player to queue
+     * Add player to queue for the given world key.
+     * Removes player from any existing queue first.
      */
     public boolean addToQueue(Player player, String worldName) {
-        if (player == null || worldName == null) {
-            return false;
-        }
+        if (player == null || worldName == null) return false;
 
-        // Check if player is already in a queue
-        if (isInQueue(player)) {
-            if (plugin.getConfigManager().getBoolean("queue.allow-world-switching")) {
-                removeFromQueue(player);
-            } else {
-                MessageUtil.sendMessage(player, "already-in-queue", createPlaceholders(player));
-                return false;
-            }
-        }
+        // Ensure player is removed from any other queue
+        removeFromQueue(player);
 
-        // Check world validity
-        if (!isValidWorld(worldName)) {
-            MessageUtil.sendMessage(player, "invalid-world", Map.of("world", worldName));
-            return false;
-        }
-
-        // Check permissions
-        if (!hasWorldPermission(player, worldName)) {
-            MessageUtil.sendMessage(player, "no-permission-world", Map.of("world", worldName));
-            return false;
-        }
-
-        // Add to queue (no size limit check)
-        List<UUID> queue = worldQueues.get(worldName);
+        Set<UUID> queue = worldQueues.computeIfAbsent(worldName, k -> ConcurrentHashMap.newKeySet());
         queue.add(player.getUniqueId());
-        playerQueueWorld.put(player.getUniqueId(), worldName);
+        playerWorldMap.put(player.getUniqueId(), worldName);
 
-        // Send join message
-        Map<String, String> placeholders = createQueuePlaceholders(worldName, queue.size());
-        placeholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
+        int currentPlayers = queue.size();
+        int requiredPlayers = plugin.getConfigManager().getInt("queue.required-players", 2);
+        int playersNeeded = Math.max(0, requiredPlayers - currentPlayers);
+
+        Map<String, String> placeholders = Map.of(
+                "world", plugin.getWorldManager().getDisplayName(worldName),
+                "current", String.valueOf(currentPlayers),
+                "required", String.valueOf(requiredPlayers),
+                "needed", String.valueOf(playersNeeded)
+        );
 
         MessageUtil.sendMessage(player, "join-queue", placeholders);
-        MessageUtil.sendTitle(player, "queue-joined", "queue-joined", placeholders);
         MessageUtil.playSound(player, "queue-join");
+        MessageUtil.sendTitle(player, "queue-joined", "queue-joined", placeholders);
 
-        // Log if enabled
         if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
-            plugin.getLogger().info(player.getName() + " joined " + worldName + " queue (" + queue.size() + " players)");
+            plugin.getLogger().info(player.getName() + " joined " + worldName + " queue (" + currentPlayers + "/" + requiredPlayers + ")");
         }
 
-        // Check if queue is ready for teleportation
-        checkQueueForTeleportation(worldName);
+        if (currentPlayers >= requiredPlayers) {
+            startTeleportation(worldName);
+        }
 
         return true;
     }
 
     /**
-     * Remove player from queue
+     * Remove player from whatever queue they are in.
+     * Returns true if player was removed.
      */
     public boolean removeFromQueue(Player player) {
-        if (player == null || !isInQueue(player)) {
-            return false;
-        }
+        if (player == null) return false;
 
-        String worldName = playerQueueWorld.remove(player.getUniqueId());
-        if (worldName != null) {
-            List<UUID> queue = worldQueues.get(worldName);
-            if (queue != null) {
-                queue.remove(player.getUniqueId());
+        String worldName = playerWorldMap.remove(player.getUniqueId());
+        if (worldName == null) return false;
 
-                MessageUtil.sendMessage(player, "leave-queue");
-                MessageUtil.playSound(player, "queue-leave");
-
-                if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
-                    plugin.getLogger().info(player.getName() + " left " + worldName + " queue (" + queue.size() + " players)");
-                }
-
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if player is in any queue
-     */
-    public boolean isInQueue(Player player) {
-        return player != null && playerQueueWorld.containsKey(player.getUniqueId());
-    }
-
-    /**
-     * Get the world name of the queue the player is in
-     */
-    public String getPlayerQueueWorld(Player player) {
-        return player != null ? playerQueueWorld.get(player.getUniqueId()) : null;
-    }
-
-    /**
-     * Get queue size for a world
-     */
-    public int getQueueSize(String worldName) {
-        List<UUID> queue = worldQueues.get(worldName);
-        return queue != null ? queue.size() : 0;
-    }
-
-    /**
-     * Get all queue sizes
-     */
-    public Map<String, Integer> getAllQueueSizes() {
-        Map<String, Integer> sizes = new HashMap<>();
-        for (Map.Entry<String, List<UUID>> entry : worldQueues.entrySet()) {
-            sizes.put(entry.getKey(), entry.getValue().size());
-        }
-        return sizes;
-    }
-
-    /**
-     * Get players in a specific world queue
-     */
-    public Set<UUID> getPlayersInWorldQueue(String worldName) {
-        List<UUID> queue = worldQueues.get(worldName);
-        return queue != null ? new HashSet<>(queue) : new HashSet<>();
-    }
-
-    /**
-     * Get player's position in queue
-     */
-    public int getPlayerPositionInQueue(Player player) {
-        if (!isInQueue(player)) {
-            return -1;
-        }
-
-        String worldName = getPlayerQueueWorld(player);
-        List<UUID> queue = worldQueues.get(worldName);
-
+        Set<UUID> queue = worldQueues.get(worldName);
         if (queue != null) {
-            return queue.indexOf(player.getUniqueId()) + 1; // 1-based position
-        }
-
-        return -1;
-    }
-
-    /**
-     * Clear queue for a specific world
-     */
-    public void clearWorldQueue(String worldName) {
-        List<UUID> queue = worldQueues.get(worldName);
-        if (queue != null) {
-            // Remove players from tracking
-            for (UUID playerUUID : new ArrayList<>(queue)) {
-                playerQueueWorld.remove(playerUUID);
-            }
-            queue.clear();
-
-            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-                plugin.getLogger().info("Cleared queue for world: " + worldName);
+            queue.remove(player.getUniqueId());
+            if (queue.isEmpty()) {
+                worldQueues.remove(worldName);
             }
         }
-    }
 
-    /**
-     * Clear all queues
-     */
-    public void clearAllQueues() {
-        for (String worldName : worldQueues.keySet()) {
-            clearWorldQueue(worldName);
+        // Send leave message only if player is online (some callers might call this for disconnects;
+        // ensure callers expect the message). We send the message here as this method has historically done.
+        MessageUtil.sendMessage(player, "leave-queue");
+        MessageUtil.playSound(player, "queue-leave");
+
+        if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
+            plugin.getLogger().info(player.getName() + " left " + worldName + " queue");
         }
-
-        plugin.getLogger().info("All queues cleared");
-    }
-
-    /**
-     * Force player into queue (admin command)
-     */
-    public boolean forcePlayerToQueue(Player target, String worldName) {
-        if (target == null || worldName == null) {
-            return false;
-        }
-
-        // Remove from current queue if in one
-        if (isInQueue(target)) {
-            removeFromQueue(target);
-        }
-
-        // Check world validity
-        if (!isValidWorld(worldName)) {
-            return false;
-        }
-
-        // Add to queue directly (bypassing all checks)
-        List<UUID> queue = worldQueues.get(worldName);
-        queue.add(target.getUniqueId());
-        playerQueueWorld.put(target.getUniqueId(), worldName);
-
-        // Notify player
-        Map<String, String> placeholders = createQueuePlaceholders(worldName, queue.size());
-        placeholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-
-        MessageUtil.sendMessage(target, "join-queue", placeholders);
-        MessageUtil.playSound(target, "queue-join");
-
-        // Check if queue is ready
-        checkQueueForTeleportation(worldName);
 
         return true;
     }
 
     /**
-     * Check if queue is ready for teleportation
+     * Remove player from queues/state when they disconnect.
+     * This is a silent cleanup: no messages or sounds are sent.
+     * It also cancels any active teleport session for the player.
+     *
+     * Use this from PlayerQuitEvent / disconnect handlers.
      */
-    private void checkQueueForTeleportation(String worldName) {
-        List<UUID> queue = worldQueues.get(worldName);
-        if (queue == null) {
-            return;
+    public void handlePlayerDisconnect(Player player) {
+        if (player == null) return;
+        handlePlayerDisconnect(player.getUniqueId());
+    }
+
+    /**
+     * Same as handlePlayerDisconnect(Player) but accepts UUID (useful from async contexts).
+     */
+    public void handlePlayerDisconnect(UUID playerUuid) {
+        if (playerUuid == null) return;
+
+        // If player had an active teleport session, cancel it (best-effort when player is online)
+        Player online = Bukkit.getPlayer(playerUuid);
+        if (online != null) {
+            if (plugin.getTeleportManager().hasActiveSession(online)) {
+                plugin.getTeleportManager().cancelPlayerSession(online, "disconnect");
+            }
         }
+
+        // Silent removal from any queue
+        String worldName = playerWorldMap.remove(playerUuid);
+        if (worldName != null) {
+            Set<UUID> queue = worldQueues.get(worldName);
+            if (queue != null) {
+                queue.remove(playerUuid);
+                if (queue.isEmpty()) {
+                    worldQueues.remove(worldName);
+                }
+            }
+
+            if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
+                plugin.getLogger().info("Cleaned up disconnected player " + playerUuid + " from queue " + worldName);
+            }
+        }
+    }
+
+    /**
+     * Start teleportation for required number of players from the queue.
+     * Picks the first online players in the queue up to requiredPlayers.
+     */
+    private void startTeleportation(String worldName) {
+        Set<UUID> queue = worldQueues.get(worldName);
+        if (queue == null || queue.isEmpty()) return;
 
         int requiredPlayers = plugin.getConfigManager().getInt("queue.required-players", 2);
 
-        if (queue.size() >= requiredPlayers) {
-            // Get required number of players
-            List<Player> playersToTeleport = new ArrayList<>();
+        List<Player> validPlayers = new ArrayList<>();
+        Iterator<UUID> iterator = queue.iterator();
 
-            for (int i = 0; i < requiredPlayers && i < queue.size(); i++) {
-                UUID playerUUID = queue.get(i);
-                Player player = Bukkit.getPlayer(playerUUID);
+        while (iterator.hasNext() && validPlayers.size() < requiredPlayers) {
+            UUID playerId = iterator.next();
+            Player player = plugin.getServer().getPlayer(playerId);
 
-                if (player != null && player.isOnline()) {
-                    playersToTeleport.add(player);
-                } else {
-                    // Remove offline player from queue
-                    queue.remove(playerUUID);
-                    playerQueueWorld.remove(playerUUID);
-                    i--; // Adjust index
-                }
+            if (player != null && player.isOnline()) {
+                validPlayers.add(player);
+            } else {
+                iterator.remove();
+                playerWorldMap.remove(playerId);
+            }
+        }
+
+        if (validPlayers.size() >= requiredPlayers) {
+            List<Player> selectedPlayers = validPlayers.subList(0, requiredPlayers);
+
+            for (Player player : selectedPlayers) {
+                queue.remove(player.getUniqueId());
+                playerWorldMap.remove(player.getUniqueId());
             }
 
-            // Check if we still have enough players
-            if (playersToTeleport.size() >= requiredPlayers) {
-                // Remove players from queue
-                for (Player player : playersToTeleport) {
-                    queue.remove(player.getUniqueId());
-                    playerQueueWorld.remove(player.getUniqueId());
-                }
-
-                // Start teleportation process
-                plugin.getTeleportManager().startTeleportation(playersToTeleport, worldName);
-
-                // Check again for remaining players (recursive processing)
-                if (queue.size() >= requiredPlayers) {
-                    checkQueueForTeleportation(worldName);
-                }
+            if (queue.isEmpty()) {
+                worldQueues.remove(worldName);
             }
+
+            plugin.getTeleportManager().startTeleportation(selectedPlayers, worldName);
         }
     }
 
     /**
-     * Update action bars for all queued players
+     * Update action bars for all queued players.
      */
     public void updateActionBars() {
-        for (Map.Entry<UUID, String> entry : playerQueueWorld.entrySet()) {
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player != null && player.isOnline()) {
-                String worldName = entry.getValue();
-                int current = getQueueSize(worldName);
-                int required = plugin.getConfigManager().getInt("queue.required-players", 2);
-                int position = getPlayerPositionInQueue(player);
+        if (!plugin.getConfigManager().getBoolean("ui.action-bar.enabled")) return;
 
-                Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("current", String.valueOf(current));
-                placeholders.put("required", String.valueOf(required));
-                placeholders.put("position", String.valueOf(position));
-                placeholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-                placeholders.put("needed", String.valueOf(Math.max(0, required - current)));
+        for (Map.Entry<String, Set<UUID>> entry : worldQueues.entrySet()) {
+            String worldName = entry.getKey();
+            Set<UUID> queue = entry.getValue();
 
-                MessageUtil.sendActionBar(player, "queue-wait", placeholders);
+            int currentPlayers = queue.size();
+            int requiredPlayers = plugin.getConfigManager().getInt("queue.required-players", 2);
+            int playersNeeded = Math.max(0, requiredPlayers - currentPlayers);
+
+            Map<String, String> placeholders = Map.of(
+                    "world", plugin.getWorldManager().getDisplayName(worldName),
+                    "current", String.valueOf(currentPlayers),
+                    "required", String.valueOf(requiredPlayers),
+                    "needed", String.valueOf(playersNeeded)
+            );
+
+            for (UUID playerId : queue) {
+                Player player = plugin.getServer().getPlayer(playerId);
+                if (player != null && player.isOnline()) {
+                    MessageUtil.sendActionBar(player, "queue-wait", placeholders);
+                }
             }
         }
     }
 
-    /**
-     * Get queue statistics for a player
-     */
-    public void sendQueueStats(Player player) {
-        MessageUtil.sendMessage(player, "stats-header");
-
-        // Total players across all queues
-        int totalPlayers = 0;
-        for (List<UUID> queue : worldQueues.values()) {
-            totalPlayers += queue.size();
-        }
-
-        Map<String, String> totalPlaceholders = Map.of("total", String.valueOf(totalPlayers));
-        MessageUtil.sendMessage(player, "stats-total-players", totalPlaceholders);
-
-        // Player's current queue
-        if (isInQueue(player)) {
-            String worldName = getPlayerQueueWorld(player);
-            int current = getQueueSize(worldName);
-            int required = plugin.getConfigManager().getInt("queue.required-players", 2);
-            int position = getPlayerPositionInQueue(player);
-
-            Map<String, String> playerPlaceholders = new HashMap<>();
-            playerPlaceholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-            playerPlaceholders.put("current", String.valueOf(current));
-            playerPlaceholders.put("required", String.valueOf(required));
-            playerPlaceholders.put("position", String.valueOf(position));
-
-            MessageUtil.sendMessage(player, "stats-your-world", playerPlaceholders);
-        }
-
-        // All world queues
-        for (Map.Entry<String, List<UUID>> entry : worldQueues.entrySet()) {
-            String worldName = entry.getKey();
-            int current = entry.getValue().size();
-            int required = plugin.getConfigManager().getInt("queue.required-players", 2);
-
-            Map<String, String> worldPlaceholders = new HashMap<>();
-            worldPlaceholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-            worldPlaceholders.put("current", String.valueOf(current));
-            worldPlaceholders.put("required", String.valueOf(required));
-
-            MessageUtil.sendMessage(player, "stats-world-line", worldPlaceholders);
-        }
-
-        MessageUtil.sendMessage(player, "stats-footer");
-    }
+    // ---- New utility methods requested by other code ----
 
     /**
-     * Get detailed queue information for admin purposes
-     */
-    public Map<String, Object> getQueueInformation() {
-        Map<String, Object> info = new HashMap<>();
-
-        // Overall statistics
-        int totalPlayers = 0;
-        Map<String, Integer> worldSizes = new HashMap<>();
-
-        for (Map.Entry<String, List<UUID>> entry : worldQueues.entrySet()) {
-            String worldName = entry.getKey();
-            int size = entry.getValue().size();
-
-            worldSizes.put(worldName, size);
-            totalPlayers += size;
-        }
-
-        info.put("totalQueuedPlayers", totalPlayers);
-        info.put("worldQueueSizes", worldSizes);
-        info.put("activeWorlds", worldQueues.keySet());
-        info.put("requiredPlayersPerGroup", plugin.getConfigManager().getInt("queue.required-players", 2));
-
-        return info;
-    }
-
-    /**
-     * Remove offline players from all queues (maintenance)
+     * Remove offline players from all queues.
+     * Useful to keep queues clean when run periodically or on server events.
      */
     public int removeOfflinePlayers() {
-        int removedCount = 0;
+        int removed = 0;
+        Set<UUID> toRemove = new HashSet<>();
 
-        for (Map.Entry<String, List<UUID>> entry : worldQueues.entrySet()) {
-            List<UUID> queue = entry.getValue();
-            Iterator<UUID> iterator = queue.iterator();
+        // Collect offline players from playerWorldMap
+        for (UUID uuid : playerWorldMap.keySet()) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p == null || !p.isOnline()) {
+                toRemove.add(uuid);
+            }
+        }
 
-            while (iterator.hasNext()) {
-                UUID playerUUID = iterator.next();
-                Player player = Bukkit.getPlayer(playerUUID);
-
-                if (player == null || !player.isOnline()) {
-                    iterator.remove();
-                    playerQueueWorld.remove(playerUUID);
-                    removedCount++;
+        // Remove them silently
+        for (UUID uuid : toRemove) {
+            String world = playerWorldMap.remove(uuid);
+            if (world != null) {
+                Set<UUID> queue = worldQueues.get(world);
+                if (queue != null) {
+                    queue.remove(uuid);
+                    if (queue.isEmpty()) {
+                        worldQueues.remove(world);
+                    }
+                }
+                removed++;
+                if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
+                    plugin.getLogger().info("Removed offline player " + uuid + " from queue " + world);
                 }
             }
         }
 
-        if (removedCount > 0 && plugin.getConfigManager().getBoolean("plugin.debug")) {
-            plugin.getLogger().info("Removed " + removedCount + " offline players from queues");
-        }
-
-        return removedCount;
+        return removed;
     }
 
     /**
-     * Check if world is valid and loaded
+     * Returns aggregate queue information for all active queues.
+     * Structure: Map<worldKey, Map<String, Object>> where inner map contains:
+     * - "size" -> Integer
+     * - "players" -> List<UUID>
+     * - "onlinePlayers" -> List<Player>
      */
-    private boolean isValidWorld(String worldName) {
-        return plugin.getWorldManager().isValidWorld(worldName);
+    public Map<String, Map<String, Object>> getQueueInformation() {
+        Map<String, Map<String, Object>> info = new HashMap<>();
+        for (String world : worldQueues.keySet()) {
+            info.put(world, getQueueInformation(world));
+        }
+        return Collections.unmodifiableMap(info);
     }
 
     /**
-     * Check if player has permission for world
+     * Returns queue information for a single world (or empty map if none).
      */
-    private boolean hasWorldPermission(Player player, String worldName) {
-        if (player.hasPermission("rtpqueue.world.*")) {
-            return true;
+    public Map<String, Object> getQueueInformation(String worldName) {
+        Map<String, Object> info = new HashMap<>();
+        Set<UUID> queue = worldQueues.get(worldName);
+        if (queue == null) {
+            info.put("size", 0);
+            info.put("players", Collections.emptyList());
+            info.put("onlinePlayers", Collections.emptyList());
+            return Collections.unmodifiableMap(info);
         }
 
-        // Check for specific world permission
-        String permission = "rtpqueue.world." + worldName.toLowerCase();
-        if (player.hasPermission(permission)) {
-            return true;
-        }
+        List<UUID> players = new ArrayList<>(queue);
+        List<Player> onlinePlayers = players.stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .filter(Player::isOnline)
+                .collect(Collectors.toList());
 
-        // Check configured world permission
-        if (plugin.getConfigManager().getBoolean("teleport.other-worlds.enabled")) {
-            Set<String> configuredWorlds = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds").getKeys(false);
-            for (String worldKey : configuredWorlds) {
-                String configWorldName = plugin.getConfig().getString("teleport.other-worlds.worlds." + worldKey + ".name");
-                if (worldName.equals(configWorldName)) {
-                    String configPermission = plugin.getConfig().getString("teleport.other-worlds.worlds." + worldKey + ".permission");
-                    return configPermission == null || player.hasPermission(configPermission);
-                }
+        info.put("size", players.size());
+        info.put("players", Collections.unmodifiableList(players));
+        info.put("onlinePlayers", Collections.unmodifiableList(onlinePlayers));
+        return Collections.unmodifiableMap(info);
+    }
+
+    /**
+     * Returns a copy of the UUIDs in the queue for the given world key.
+     */
+    public List<UUID> getPlayersInWorldQueue(String worldName) {
+        Set<UUID> queue = worldQueues.get(worldName);
+        if (queue == null) return Collections.emptyList();
+        return new ArrayList<>(queue);
+    }
+
+    /**
+     * Returns online Player objects currently in the given world's queue.
+     */
+    public List<Player> getOnlinePlayersInWorldQueue(String worldName) {
+        return getPlayersInWorldQueue(worldName).stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .filter(Player::isOnline)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Clear a specific world's queue. Notifies online players that they left the queue
+     * and removes their mappings.
+     */
+    public void clearWorldQueue(String worldName) {
+        Set<UUID> queue = worldQueues.remove(worldName);
+        if (queue == null || queue.isEmpty()) return;
+
+        for (UUID uuid : new HashSet<>(queue)) {
+            playerWorldMap.remove(uuid);
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null && player.isOnline()) {
+                MessageUtil.sendMessage(player, "leave-queue");
+                MessageUtil.playSound(player, "queue-leave");
             }
         }
 
-        // Default world is always accessible with base permission
-        String defaultWorld = plugin.getConfigManager().getString("teleport.default-world", "world");
-        return worldName.equals(defaultWorld);
-    }
-
-    /**
-     * Create placeholders for player
-     */
-    private Map<String, String> createPlaceholders(Player player) {
-        Map<String, String> placeholders = new HashMap<>();
-        String worldName = getPlayerQueueWorld(player);
-
-        if (worldName != null) {
-            placeholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-            placeholders.put("current", String.valueOf(getQueueSize(worldName)));
-            placeholders.put("required", String.valueOf(plugin.getConfigManager().getInt("queue.required-players", 2)));
-            placeholders.put("position", String.valueOf(getPlayerPositionInQueue(player)));
+        if (plugin.getConfigManager().getBoolean("advanced.log-queue-actions")) {
+            plugin.getLogger().info("Cleared queue for world " + worldName);
         }
+    }
 
-        return placeholders;
+    // ---- Existing getters / utilities ----
+
+    public boolean isInQueue(Player player) {
+        return player != null && playerWorldMap.containsKey(player.getUniqueId());
+    }
+
+    public String getPlayerQueueWorld(Player player) {
+        return player != null ? playerWorldMap.get(player.getUniqueId()) : null;
+    }
+
+    public int getQueueSize(String worldName) {
+        Set<UUID> queue = worldQueues.get(worldName);
+        return queue != null ? queue.size() : 0;
+    }
+
+    public int getTotalQueuedPlayers() {
+        return playerWorldMap.size();
     }
 
     /**
-     * Create queue placeholders
+     * Returns a map of worldKey -> queue size for all currently tracked queues.
+     * Use this when you need to show sizes of every active queue.
      */
-    private Map<String, String> createQueuePlaceholders(String worldName, int currentSize) {
-        Map<String, String> placeholders = new HashMap<>();
-        int required = plugin.getConfigManager().getInt("queue.required-players", 2);
-
-        placeholders.put("world", plugin.getWorldManager().getDisplayName(worldName));
-        placeholders.put("current", String.valueOf(currentSize));
-        placeholders.put("required", String.valueOf(required));
-        placeholders.put("needed", String.valueOf(Math.max(0, required - currentSize)));
-
-        return placeholders;
-    }
-
-    /**
-     * Handle player disconnect
-     */
-    public void handlePlayerDisconnect(Player player) {
-        if (isInQueue(player)) {
-            String worldName = getPlayerQueueWorld(player);
-            removeFromQueue(player);
-
-            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-                plugin.getLogger().info("Removed " + player.getName() + " from " + worldName + " queue (disconnect)");
-            }
+    public Map<String, Integer> getAllQueueSizes() {
+        Map<String, Integer> sizes = new HashMap<>();
+        for (Map.Entry<String, Set<UUID>> e : worldQueues.entrySet()) {
+            sizes.put(e.getKey(), e.getValue() != null ? e.getValue().size() : 0);
         }
+        return Collections.unmodifiableMap(sizes);
+    }
+
+    /**
+     * Returns a copy of active world keys that have queues.
+     */
+    public Set<String> getActiveWorlds() {
+        return new HashSet<>(worldQueues.keySet());
+    }
+
+    public void clearAllQueues() {
+        // Notify online players and clear mappings
+        for (String world : new HashSet<>(worldQueues.keySet())) {
+            clearWorldQueue(world);
+        }
+        // ensure maps are empty
+        worldQueues.clear();
+        playerWorldMap.clear();
     }
 }

@@ -1,15 +1,15 @@
 name: AdvancedRTPQueue
-version: 3.0
+version: "3.0"
 main: com.kingrbxd.rtpqueue.AdvancedRTPQueue
 author: KingRBxD
 description: Professional Random Teleportation Queue system with safe teleportation
 api-version: 1.19
-softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI]
+softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI, PaperLib]
 
 commands:
   rtpqueue:
     description: Join or manage the RTP queue
-    usage: /rtpqueue [world <name>|leave|cancel|reload|clear]
+    usage: /rtpqueue [world <name>|leave|reload|clear]
     permission: rtpqueue.use
     aliases: [rtpq, rtp]
 

@@ -1,57 +1,46 @@
-# AdvancedRTPQueue v3.0 Configuration
+# =====================================
+#  AdvancedRTPQueue v3.0 Configuration
+# =====================================
 # Professional RTP Queue system with safe teleportation
 
-# Plugin settings
 plugin:
   debug: false
 
-# Queue behavior
 queue:
   required-players: 2
   clear-interval: 300
   allow-world-switching: true
   auto-join-on-login: false
 
-# Cooldowns (seconds)
 cooldowns:
   queue-join: 60
   queue-leave: 10
   pre-teleport: 5
   post-teleport: 120
-
   per-world-cooldown:
     enabled: false
     worlds:
       world: 120
       world_nether: 180
 
-# Teleportation settings
 teleport:
   default-world: "world"
   default-world-display-name: "&aOverworld"
-
-  # Global boundaries
   min-x: -1000
   max-x: 1000
   min-z: -1000
   max-z: 1000
   min-y: 60
   max-y: 250
-
-  # Safety settings
   safe-teleport: true
   cancel-on-move: true
   cancel-on-damage: false
   cancel-on-chat: false
-  max-attempts: 50
-  search-timeout: 30
-
-  # Performance
+  max-attempts: 100
+  search-timeout: 45
   cache-safe-locations: true
-  max-cached-locations: 10
+  max-cached-locations: 15
   allow-fallback-locations: true
-
-  # Unsafe blocks
   unsafe-blocks:
     - LAVA
     - WATER
@@ -66,8 +55,8 @@ teleport:
     - POWDER_SNOW
     - END_PORTAL
     - NETHER_PORTAL
-
-  # Additional worlds
+    - VOID_AIR
+    - CAVE_AIR
   other-worlds:
     enabled: true
     worlds:
@@ -81,7 +70,7 @@ teleport:
         max-z: 500
         min-y: 30
         max-y: 120
-        max-attempts: 30
+        max-attempts: 75
       end:
         name: "world_the_end"
         display-name: "&dThe End"
@@ -92,9 +81,8 @@ teleport:
         max-z: 200
         min-y: 50
         max-y: 120
-        max-attempts: 30
+        max-attempts: 50
 
-# Claim protection
 claim-protection:
   enabled: true
   plugins:
@@ -102,19 +90,17 @@ claim-protection:
     factions: true
     towny: true
 
-# UI Configuration
 ui:
   action-bar:
     enabled: true
     update-interval: 20
-    queue-wait: "&7Waiting for players... &e{current}&7/&e{required}"
+    queue-wait: "&7Waiting for &e{needed} &7more player(s)... &7(&e{current}&7/&e{required}&7)"
     countdown: "&6Teleporting in &c{time} &6seconds..."
 
-# Titles
 titles:
   queue-joined:
     title: "&6Queue Joined"
-    subtitle: "&7Waiting for &e{required} &7players"
+    subtitle: "&7Waiting for &e{needed} &7more player(s)"
     fade-in: 10
     stay: 40
     fade-out: 10
@@ -140,7 +126,6 @@ titles:
     stay: 30
     fade-out: 20
 
-# Messages
 messages:
   join-queue: "&a✔ You joined the &e{world} &aqueue! &7({current}/{required})"
   leave-queue: "&c❌ You left the queue."
@@ -152,7 +137,7 @@ messages:
   no-permission: "&c⛔ No permission."
   no-permission-world: "&c⛔ No permission for world &e{world}&c."
   invalid-world: "&c⚠ Invalid world: &e{world}"
-  invalid-command: "&c❓ Usage: &e/rtpqueue [world <name>|leave|cancel]"
+  invalid-command: "&c❓ Usage: &e/rtpqueue [world <name>|leave|reload|clear]"
   reload-success: "&a🔄 Configuration reloaded!"
   reload-failed: "&c❌ Reload failed: &e{error}"
   queue-cleared: "&c🧹 All queues cleared."
@@ -166,60 +151,48 @@ messages:
   cooldown-queue-join: "&c⏰ Queue join cooldown! Wait &e{time}&c."
   cooldown-post-teleport: "&c⏰ Post-teleport cooldown! Wait &e{time}&c."
 
-# Sounds
 sounds:
   enabled: true
-
   queue-join:
     sound: "ENTITY_EXPERIENCE_ORB_PICKUP"
     volume: 1.0
     pitch: 1.0
-
   queue-leave:
     sound: "ENTITY_ITEM_BREAK"
     volume: 0.7
     pitch: 0.8
-
   match-found:
     sound: "ENTITY_PLAYER_LEVELUP"
     volume: 1.0
     pitch: 1.2
-
   countdown:
     sound: "BLOCK_NOTE_BLOCK_PLING"
     volume: 0.8
     pitch: 1.5
-
   teleport-success:
     sound: "ENTITY_ENDERMAN_TELEPORT"
     volume: 1.0
     pitch: 1.0
-
   teleport-cancelled:
     sound: "ENTITY_VILLAGER_NO"
     volume: 0.8
     pitch: 0.9
-
   error:
     sound: "BLOCK_ANVIL_LAND"
     volume: 0.5
     pitch: 0.8
 
-# Particles
 particles:
   enabled: true
-
   teleport-start:
     particle: "PORTAL"
     count: 50
     spread: 1.0
-
   teleport-success:
     particle: "EXPLOSION_NORMAL"
     count: 20
     spread: 0.5
 
-# Advanced settings
 advanced:
   log-queue-actions: false
   log-teleports: true
