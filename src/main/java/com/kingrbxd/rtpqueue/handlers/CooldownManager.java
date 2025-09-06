@@ -9,7 +9,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Complete cooldown manager with all features implemented
+ * Complete cooldown manager with all features implemented.
+ *
+ * This class keeps per-player cooldown state in memory and provides helpers
+ * to check/set/clean cooldowns. The handlePlayerDisconnect(Player) method
+ * now uses the Player parameter (logs debug info) to avoid "variable never used"
+ * warnings in IDEs and to provide useful runtime information when plugin.debug is enabled.
  */
 public class CooldownManager {
     private final AdvancedRTPQueue plugin;
@@ -23,9 +28,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player can join queue
+     * Check if player can join queue (global checks).
      */
     public boolean canJoinQueue(Player player) {
+        if (player == null) return false;
         if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return true;
         }
@@ -52,9 +58,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player can join specific world queue
+     * Check if player can join a specific world queue (includes per-world cooldowns).
      */
     public boolean canJoinWorldQueue(Player player, String worldName) {
+        if (player == null) return false;
         if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return true;
         }
@@ -79,9 +86,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player can leave queue
+     * Check if player can leave queue.
      */
     public boolean canLeaveQueue(Player player) {
+        if (player == null) return false;
         if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return true;
         }
@@ -98,9 +106,10 @@ public class CooldownManager {
     }
 
     /**
-     * Set queue join cooldown
+     * Set queue join cooldown for the player.
      */
     public void setQueueJoinCooldown(Player player) {
+        if (player == null) return;
         int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.queue-join", 60);
         if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
             queueJoinCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
@@ -108,9 +117,10 @@ public class CooldownManager {
     }
 
     /**
-     * Set queue leave cooldown
+     * Set queue leave cooldown for the player.
      */
     public void setQueueLeaveCooldown(Player player) {
+        if (player == null) return;
         int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.queue-leave", 10);
         if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
             queueLeaveCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
@@ -118,9 +128,10 @@ public class CooldownManager {
     }
 
     /**
-     * Set post teleport cooldown
+     * Set post-teleport cooldown for the player.
      */
     public void setPostTeleportCooldown(Player player) {
+        if (player == null) return;
         int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.post-teleport", 120);
         if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
             postTeleportCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
@@ -128,13 +139,14 @@ public class CooldownManager {
     }
 
     /**
-     * Set per-world cooldown
+     * Set per-world cooldown for the player (records expiration time for the given world).
+     * worldName should be the identifier used by the queue system (config key or bukkit name per your design).
      */
     public void setPerWorldCooldown(Player player, String worldName) {
+        if (player == null || worldName == null) return;
         if (!plugin.getConfigManager().getBoolean("cooldowns.per-world-cooldown.enabled")) {
             return;
         }
-
         if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return;
         }
@@ -149,9 +161,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player has queue join cooldown
+     * Check if player has an active queue join cooldown.
      */
     public boolean hasQueueJoinCooldown(Player player) {
+        if (player == null) return false;
         Long cooldownEnd = queueJoinCooldowns.get(player.getUniqueId());
         if (cooldownEnd == null) {
             return false;
@@ -166,9 +179,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player has queue leave cooldown
+     * Check if player has an active queue leave cooldown.
      */
     public boolean hasQueueLeaveCooldown(Player player) {
+        if (player == null) return false;
         Long cooldownEnd = queueLeaveCooldowns.get(player.getUniqueId());
         if (cooldownEnd == null) {
             return false;
@@ -183,9 +197,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player has post teleport cooldown
+     * Check if player has an active post-teleport cooldown.
      */
     public boolean hasPostTeleportCooldown(Player player) {
+        if (player == null) return false;
         Long cooldownEnd = postTeleportCooldowns.get(player.getUniqueId());
         if (cooldownEnd == null) {
             return false;
@@ -200,9 +215,10 @@ public class CooldownManager {
     }
 
     /**
-     * Check if player has per-world cooldown
+     * Check if player has an active per-world cooldown for the given world.
      */
     public boolean hasPerWorldCooldown(Player player, String worldName) {
+        if (player == null || worldName == null) return false;
         Map<String, Long> playerCooldowns = perWorldCooldowns.get(player.getUniqueId());
         if (playerCooldowns == null) {
             return false;
@@ -225,33 +241,37 @@ public class CooldownManager {
     }
 
     /**
-     * Get remaining queue join cooldown in milliseconds
+     * Get remaining queue join cooldown in milliseconds.
      */
     public long getQueueJoinCooldownRemaining(Player player) {
+        if (player == null) return 0;
         Long cooldownEnd = queueJoinCooldowns.get(player.getUniqueId());
         return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
     }
 
     /**
-     * Get remaining queue leave cooldown in milliseconds
+     * Get remaining queue leave cooldown in milliseconds.
      */
     public long getQueueLeaveCooldownRemaining(Player player) {
+        if (player == null) return 0;
         Long cooldownEnd = queueLeaveCooldowns.get(player.getUniqueId());
         return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
     }
 
     /**
-     * Get remaining post teleport cooldown in milliseconds
+     * Get remaining post teleport cooldown in milliseconds.
      */
     public long getPostTeleportCooldownRemaining(Player player) {
+        if (player == null) return 0;
         Long cooldownEnd = postTeleportCooldowns.get(player.getUniqueId());
         return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
     }
 
     /**
-     * Get remaining per-world cooldown in milliseconds
+     * Get remaining per-world cooldown in milliseconds.
      */
     public long getPerWorldCooldownRemaining(Player player, String worldName) {
+        if (player == null || worldName == null) return 0;
         Map<String, Long> playerCooldowns = perWorldCooldowns.get(player.getUniqueId());
         if (playerCooldowns == null) {
             return 0;
@@ -262,9 +282,10 @@ public class CooldownManager {
     }
 
     /**
-     * Clear all cooldowns for a player
+     * Clear all cooldowns for a single player.
      */
     public void clearAllCooldowns(Player player) {
+        if (player == null) return;
         UUID playerUUID = player.getUniqueId();
         queueJoinCooldowns.remove(playerUUID);
         queueLeaveCooldowns.remove(playerUUID);
@@ -272,12 +293,12 @@ public class CooldownManager {
         perWorldCooldowns.remove(playerUUID);
 
         if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-            plugin.getLogger().info("Cleared all cooldowns for " + player.getName());
+            plugin.getLogger().info("Cleared all cooldowns for " + player.getName() + " (" + playerUUID + ")");
         }
     }
 
     /**
-     * Clear all cooldowns for all players
+     * Clear all cooldowns for all players.
      */
     public void clearAllCooldowns() {
         queueJoinCooldowns.clear();
@@ -289,17 +310,34 @@ public class CooldownManager {
     }
 
     /**
-     * Handle player disconnect
+     * Handle player disconnect.
+     *
+     * We intentionally KEEP cooldowns across disconnects (so players can't bypass cooldowns by relogging).
+     * This method now uses the Player parameter (logs debug information) to avoid IDE warnings.
      */
     public void handlePlayerDisconnect(Player player) {
-        // Keep cooldowns when player disconnects for persistence
+        if (player == null) return;
+
+        // Keep cooldowns for disconnected players (do not remove them).
         if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-            plugin.getLogger().info("Keeping cooldowns for disconnected player: " + player.getName());
+            plugin.getLogger().info("Player disconnected — preserving cooldowns for: " + player.getName()
+                    + " (" + player.getUniqueId() + ")");
         }
     }
 
     /**
-     * Clean up expired cooldowns (maintenance task)
+     * Optional convenience: handle disconnect by UUID (callers who don't have a Player instance can use this).
+     */
+    public void handlePlayerDisconnect(UUID playerUuid) {
+        if (playerUuid == null) return;
+        // Nothing to remove — this method mirrors the Player variant but accepts UUIDs.
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Player UUID disconnected — preserving cooldowns for: " + playerUuid);
+        }
+    }
+
+    /**
+     * Clean up expired cooldowns (maintenance task).
      */
     public void cleanupExpiredCooldowns() {
         long currentTime = System.currentTimeMillis();
@@ -313,7 +351,7 @@ public class CooldownManager {
         // Clean post teleport cooldowns
         postTeleportCooldowns.entrySet().removeIf(entry -> entry.getValue() <= currentTime);
 
-        // Clean per-world cooldowns
+        // Clean per-world cooldowns (remove expired world entries and players with no remaining entries)
         perWorldCooldowns.entrySet().removeIf(playerEntry -> {
             playerEntry.getValue().entrySet().removeIf(worldEntry -> worldEntry.getValue() <= currentTime);
             return playerEntry.getValue().isEmpty();

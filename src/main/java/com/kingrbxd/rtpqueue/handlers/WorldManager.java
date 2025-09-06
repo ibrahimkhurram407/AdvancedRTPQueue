@@ -8,6 +8,9 @@ import java.util.*;
 
 /**
  * FIXED: World manager with proper world name handling
+ *
+ * Added helper methods to support tab-completion using world display names and to resolve
+ * a display name back to the configured world key.
  */
 public class WorldManager {
     private final AdvancedRTPQueue plugin;
@@ -66,7 +69,7 @@ public class WorldManager {
                                     worldSection.getInt("max-attempts", 50)
                             );
 
-                            // FIXED: Use the key name (nether, end) instead of bukkit world name
+                            // Use the config key name (nether, end) as the identifier
                             worldSettings.put(key, settings);
                         }
                     }
@@ -78,7 +81,7 @@ public class WorldManager {
     }
 
     /**
-     * FIXED: Strip color codes for tab completion
+     * Strip color codes for tab completion
      */
     private String stripColorCodes(String text) {
         if (text == null) return "";
@@ -86,7 +89,16 @@ public class WorldManager {
     }
 
     /**
-     * Check if world is valid and available
+     * Normalize a display name for comparison (strip color codes and trim).
+     */
+    private String normalizeDisplayName(String displayName) {
+        if (displayName == null) return "";
+        return stripColorCodes(displayName).trim();
+    }
+
+    /**
+     * Check if world is valid and available (server has the bukkit world configured).
+     * worldName here is the config key (e.g. "nether", "end", or the default bukkit name).
      */
     public boolean isValidWorld(String worldName) {
         if (!worldSettings.containsKey(worldName)) return false;
@@ -104,7 +116,7 @@ public class WorldManager {
     }
 
     /**
-     * Get display name for world
+     * Get display name for world (with color codes, as configured)
      */
     public String getDisplayName(String worldName) {
         WorldSettings settings = worldSettings.get(worldName);
@@ -112,12 +124,12 @@ public class WorldManager {
     }
 
     /**
-     * FIXED: Get all available world names (keys like 'nether', 'end', not bukkit names)
+     * Get all available world keys (keys like 'nether', 'end', not bukkit names).
      */
     public Set<String> getAllWorldNames() {
         Set<String> availableWorlds = new HashSet<>();
         for (Map.Entry<String, WorldSettings> entry : worldSettings.entrySet()) {
-            // Only include worlds that actually exist
+            // Only include worlds that actually exist on the server
             if (isValidWorld(entry.getKey())) {
                 availableWorlds.add(entry.getKey());
             }
@@ -126,17 +138,64 @@ public class WorldManager {
     }
 
     /**
-     * FIXED: Get world names for tab completion (clean names without color codes)
+     * Return a set of clean display names suitable for tab-completion.
+     * These are the color-stripped display names from config (e.g. "The Nether", "The End").
+     *
+     * Note: callers that use display names for tab completion must resolve them back to the config key
+     * using resolveKeyByDisplayName(...) before performing world lookups.
      */
-    public Set<String> getTabCompleteWorldNames() {
+    public Set<String> getTabCompleteWorldDisplayNames() {
         Set<String> tabNames = new HashSet<>();
         for (Map.Entry<String, WorldSettings> entry : worldSettings.entrySet()) {
             if (isValidWorld(entry.getKey())) {
                 WorldSettings settings = entry.getValue();
-                tabNames.add(settings.getCleanDisplayName()); // Clean name for tab completion
+                String clean = settings.getCleanDisplayName();
+                if (clean != null && !clean.isEmpty()) {
+                    tabNames.add(clean);
+                } else {
+                    tabNames.add(entry.getKey());
+                }
             }
         }
         return tabNames;
+    }
+
+    /**
+     * Resolve a user-provided display name (tab-completion value) back to the configured world key.
+     * Comparison is case-insensitive and color codes are ignored.
+     *
+     * Returns:
+     *  - the config key (e.g. "nether") if a display name match is found
+     *  - the input value if it exactly matches a config key
+     *  - null if no match found
+     */
+    public String resolveKeyByDisplayName(String input) {
+        if (input == null) return null;
+        String normalized = normalizeDisplayName(input);
+
+        // direct key match
+        if (worldSettings.containsKey(input)) return input;
+
+        // try match on clean display name
+        for (Map.Entry<String, WorldSettings> e : worldSettings.entrySet()) {
+            WorldSettings s = e.getValue();
+            if (s == null) continue;
+            String clean = normalizeDisplayName(s.getCleanDisplayName());
+            if (clean.equalsIgnoreCase(normalized)) {
+                return e.getKey();
+            }
+            // also accept full displayName (with colors stripped)
+            String fullClean = normalizeDisplayName(s.getDisplayName());
+            if (fullClean.equalsIgnoreCase(normalized)) {
+                return e.getKey();
+            }
+            // also accept the configured bukkit world name
+            if (s.getBukkitWorldName().equalsIgnoreCase(input)) {
+                return e.getKey();
+            }
+        }
+
+        return null;
     }
 
     public Set<String> getValidWorldNames() {

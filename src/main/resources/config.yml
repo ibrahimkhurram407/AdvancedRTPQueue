@@ -1,31 +1,33 @@
-# =====================================
-#  AdvancedRTPQueue v3.0 Configuration
+# AdvancedRTPQueue v3.0 Configuration
 # =====================================
 # Professional RTP Queue system with safe teleportation
+# NOTE: per-world cooldowns use BUKKIT world names (see cooldowns.per-world-cooldown.worlds).
 
 plugin:
   debug: false
 
 queue:
   required-players: 2
-  clear-interval: 300
+  clear-interval: 300            # seconds between automatic queue clear maintenance runs
   allow-world-switching: true
   auto-join-on-login: false
 
 cooldowns:
-  queue-join: 60
-  queue-leave: 10
-  pre-teleport: 5
-  post-teleport: 120
+  queue-join: 60                 # global join cooldown (seconds)
+  queue-leave: 10                # leave cooldown (seconds)
+  pre-teleport: 5                # countdown before teleport (seconds)
+  post-teleport: 120             # cooldown after being teleported (seconds)
   per-world-cooldown:
     enabled: false
+    # Use Bukkit world names here (not display names). Example names below:
     worlds:
-      world: 120
-      world_nether: 180
+      world: 120                 # overworld (bukkit name)
+      world_nether: 180          # nether (bukkit name)
+      world_the_end: 180         # end (bukkit name)
 
 teleport:
-  default-world: "world"
-  default-world-display-name: "&aOverworld"
+  default-world: "world"                         # Bukkit world name used as default
+  default-world-display-name: "&aOverworld"      # Display name used in messages/tab
   min-x: -1000
   max-x: 1000
   min-z: -1000
@@ -61,6 +63,7 @@ teleport:
     enabled: true
     worlds:
       nether:
+        # config key: "nether" (used in commands and tab). bukkit name below:
         name: "world_nether"
         display-name: "&cThe Nether"
         permission: "rtpqueue.world.nether"
@@ -127,6 +130,7 @@ titles:
     fade-out: 20
 
 messages:
+  # Basic queue messages
   join-queue: "&a✔ You joined the &e{world} &aqueue! &7({current}/{required})"
   leave-queue: "&c❌ You left the queue."
   already-in-queue: "&e⚠ You're already in the queue!"
@@ -137,19 +141,35 @@ messages:
   no-permission: "&c⛔ No permission."
   no-permission-world: "&c⛔ No permission for world &e{world}&c."
   invalid-world: "&c⚠ Invalid world: &e{world}"
-  invalid-command: "&c❓ Usage: &e/rtpqueue [world <name>|leave|reload|clear]"
+  invalid-command: "&c❓ Usage: &e/rtpqueue [world <name>|leave|reload|clear|force <player> [world]]"
+  invalid-player: "&c⚠ Player &e{player} &cis not online."
+
+  # Reload / admin
   reload-success: "&a🔄 Configuration reloaded!"
   reload-failed: "&c❌ Reload failed: &e{error}"
   queue-cleared: "&c🧹 All queues cleared."
+
+  # Teleport cancellations / failures
   teleport-failed: "&c❌ Teleport failed! No safe location found."
   cancelled-moved: "&c❌ Teleport cancelled - you moved!"
   cancelled-damage: "&c❌ Teleport cancelled - you took damage!"
   cancelled-chat: "&c❌ Teleport cancelled - you chatted!"
   cancelled-timeout: "&c❌ Teleport cancelled - location search timed out!"
   cancelled-shutdown: "&c❌ Teleport cancelled - server restarting!"
+
+  # Cooldowns
   cooldown-active: "&c⏰ Cooldown active! Wait &e{time}&c."
   cooldown-queue-join: "&c⏰ Queue join cooldown! Wait &e{time}&c."
   cooldown-post-teleport: "&c⏰ Post-teleport cooldown! Wait &e{time}&c."
+
+  # Force command messages (administrative)
+  force-added-player: "&a✔ Added &e{player} &ato the &e{world} &aqueue."
+  forced-added: "&a✔ You were added to the &e{world} &aqueue by an admin."
+  force-switched-player: "&a✔ Moved &e{player} &ato the &e{world} &aqueue."
+  force-player-already-in-queue: "&e⚠ &e{player} &eis already in the queue for &e{world}."
+  force-failed: "&c❌ Failed to add &e{player} &cto the &e{world} &cqueue."
+  force-switch-disabled: "&c⚠ Cannot move player — world switching for queued players is disabled."
+  force-success: "&a✔ Forced action completed for &e{player} &7(&e{world}&7)."
 
 sounds:
   enabled: true

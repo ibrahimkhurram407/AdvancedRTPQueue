@@ -2,14 +2,14 @@ name: AdvancedRTPQueue
 version: "3.0"
 main: com.kingrbxd.rtpqueue.AdvancedRTPQueue
 author: KingRBxD
-description: Professional Random Teleportation Queue system with safe teleportation
+description: Most popular Random Teleport Queue plugin.
 api-version: 1.19
-softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI, PaperLib]
+softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI]
 
 commands:
   rtpqueue:
     description: Join or manage the RTP queue
-    usage: /rtpqueue [world <name>|leave|reload|clear]
+    usage: /rtpqueue [world <name>|leave|reload|clear|force <player> <world>]
     permission: rtpqueue.use
     aliases: [rtpq, rtp]
 
@@ -25,4 +25,7 @@ permissions:
     default: op
   rtpqueue.world.*:
     description: Access to all worlds
+    default: op
+  rtpqueue.force:
+    description: Force teleport a player to a world (console + admins)
     default: op
