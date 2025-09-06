@@ -1,133 +1,141 @@
-# =====================================
-#  AdvancedRTPQueue Configuration
-# =====================================
-# Configure queue size, teleport settings, messages, and sounds.
+# AdvancedRTPQueue Configuration
+# Version: 2.1
 
-# ==========================
-# Queue Settings
-# ==========================
+# General queue settings
 queue:
-  required-players: 2      # Players needed to start teleportation
-  clear-interval: 300      # Queue resets if inactive (seconds)
+  # Number of players required to be in queue before teleporting
+  required-players: 2
 
-# ==========================
-# Cooldown Settings
-# ==========================
+  # Time in seconds before an inactive queue is cleared
+  clear-interval: 300
+
+# Cooldown settings
 cooldowns:
-  # Global cooldown for entering queue (in seconds)
-  # Set to -1 to disable this cooldown
+  # Global cooldown in seconds between queue joins (-1 to disable)
   queue-join: 60
 
-  # Cooldown before teleporting after match is found (in seconds)
-  # Players will have this time to prepare before teleport
-  # Set to -1 to disable this cooldown
+  # Wait time in seconds before teleporting after match is found
   pre-teleport: 5
 
-  # Cancel teleport if player moves during pre-teleport cooldown
-  cancel-on-move: true
-
-  # Enable per-world cooldowns (overrides global queue-join cooldown)
+  # Per-world cooldown settings
   per-world-cooldown:
     enabled: false
     worlds:
-      # Set any cooldown to -1 to disable it for that specific world
-      world: 128
-      world_nether: 600
-      world_the_end: 300
+      world: 120
+      world_nether: 180
+      world_the_end: 240
 
-# ==========================
-# Claim Protection
-# ==========================
-claim-protection:
-  enabled: true
-  # Supported plugins: GriefPrevention, Factions (SaberFactions/MassiveCraft), Towny
-  # Will not teleport players into claimed areas
-  plugins:
-    grief-prevention: true
-    factions: true      # Works with SaberFactions and other MassiveCraft-based Factions plugins
-    towny: true
-
-# ==========================
-# Teleportation Settings
-# ==========================
+# Teleport settings
 teleport:
-  # Main world configuration
+  # Default world settings
   default-world: "world"
-  default-world-display-name: "Overworld"  # Display name for the default world
+  default-world-display-name: "Overworld"
+
+  # Teleport coordinate boundaries
   min-x: -500
   max-x: 500
   min-z: -500
   max-z: 500
-  safe-teleport: true       # Ensures safe landing spots
-  max-teleport-attempts: 10 # Retries for safe teleport location
+
+  # Safety checks
+  safe-teleport: true
+  cancel-on-move: true
+  max-teleport-attempts: 10
+
+  # List of block types considered unsafe to teleport onto
+  unsafe-blocks:
+    - LAVA
+    - WATER
+    - CACTUS
+    - CAMPFIRE
+    - FIRE
+    - MAGMA_BLOCK
+    - SOUL_FIRE
+    - SOUL_CAMPFIRE
+    - SWEET_BERRY_BUSH
+    - WITHER_ROSE
+    - POWDER_SNOW
 
   # Multi-world support
   other-worlds:
-    enabled: true
+    enabled: false
     worlds:
       nether:
         name: "world_nether"
         display-name: "Nether"
-        permission: "rtpqueue.world.nether"  # Use "none" for no permission
-        min-x: -200
-        max-x: 200
-        min-z: -200
-        max-z: 200
+        permission: "rtpqueue.world.nether"
+        min-x: -500
+        max-x: 500
+        min-z: -500
+        max-z: 500
         safe-teleport: true
-        max-teleport-attempts: 5
-
+        max-teleport-attempts: 10
       end:
         name: "world_the_end"
         display-name: "The End"
-        permission: "none"  # No permission needed
-        min-x: -300
-        max-x: 300
-        min-z: -300
-        max-z: 300
+        permission: "rtpqueue.world.end"
+        min-x: -500
+        max-x: 500
+        min-z: -500
+        max-z: 500
         safe-teleport: true
-        max-teleport-attempts: 8
+        max-teleport-attempts: 10
 
-  # Unsafe blocks for teleportation
-  unsafe-blocks:
-    - LAVA
-    - WATER
-    - FIRE
-    - CACTUS
-    - MAGMA_BLOCK
-    - VOID_AIR
-    - CAVE_AIR  # Added cave air as potentially unsafe
+# Claim protection settings
+claim-protection:
+  enabled: true
+  plugins:
+    grief-prevention: true
+    factions: true
+    towny: true
 
-# ==========================
 # Messages
-# ==========================
 messages:
+  # Queue messages
   join-queue: "&#00ff00✔ &aYou joined the queue."
-  waiting-for-opponent: "&#0099ff⏳ &bWaiting for a match..."
   leave-queue: "&#ff0000❌ &cYou left the queue."
   already-in-queue: "&#ffa500⚠ &eYou're already in the queue!"
   not-in-queue: "&#ff4444⚠ &cYou're not in the queue."
-  opponent-found: "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds..."
-  teleporting-title: "&#ff6600🚀 &6Teleporting..."
-  teleporting-subtitle: "&#ff3333🔥 &cGet ready!"
-  teleported: "&#00ff00✅ &aTeleported!"
-  no-permission: "&#ff5555⛔ &cNo permission."
-  reload: "&#00cc00🔄 &aConfig reloaded!"
-  queue-cleared: "&#ff3300🚀 &cQueue cleared."
-  invalid-world: "&#ff0000⚠ &cError: Invalid world!"
-  invalid-command: "&#ff5500❓ &cUnknown command. Try &e/rtpqueue &cor &e/rtpqueue cancel."
-  teleport-failed: "&#ff0000❌ &cTeleport failed! No safe spot."
-  cooldown-active: "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds."
-  world-teleport: "&#00ccff🌎 &bTeleporting to {world}..."
-  move-cancelled: "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."
-  claim-protected: "&#ff3333🛡 &cCannot teleport to claimed land."
+  waiting-for-opponent: "&#0099ff⏳ &bWaiting for a match..."
+  queue-cleared: "&#ff3300 &cQueue cleared."
 
-# ==========================
+  # Teleport messages
+  opponent-found: "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds with {players} players..."
+  teleporting-title: "&#ff6600 &6Teleporting..."
+  teleporting-subtitle: "&#ff3333 &cGet ready!"
+  teleported: "&#00ff00✅ &aTeleported!"
+  teleport-failed: "&#ff0000❌ &cTeleport failed! No safe spot."
+  world-teleport: "&#00ccff &bTeleporting to {world}..."
+  invalid-world: "&#ff0000⚠ &cError: Invalid world!"
+
+  # Teleport cancellation messages
+  teleport-cancelled: "&#ff6600⚠ &cTeleport cancelled!"
+  move-cancelled: "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."
+  cancel-moved: "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."
+  cancel-left: "&#ff6600⚠ &cTeleport cancelled! You left the server."
+  cancel-not-enough-players: "&#ff6600⚠ &cTeleport cancelled! Not enough players."
+  cancel-no-safe-locations: "&#ff6600⚠ &cTeleport cancelled! No safe location found."
+  cancel-invalid-world: "&#ff6600⚠ &cTeleport cancelled! Invalid world."
+
+  # Group cancellation messages (sent to other players)
+  group-teleport-cancelled: "&#ff6600⚠ &cTeleport cancelled because {player} {reason}!"
+  group-cancel-moved: "&#ff6600⚠ &cTeleport cancelled because {player} moved!"
+  group-cancel-left: "&#ff6600⚠ &cTeleport cancelled because {player} left!"
+
+  # Other messages
+  reload: "&#00cc00 &aConfig reloaded!"
+  no-permission: "&#ff5555⛔ &cNo permission."
+  cooldown-active: "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds."
+  invalid-command: "&#ff5500❓ &cUnknown command. Try &e/rtpqueue &cor &e/rtpqueue cancel."
+  claim-protected: "&#ff3333 &cCannot teleport to claimed land."
+
 # Sounds
-# ==========================
 sounds:
-  queue-join: ENTITY_PLAYER_LEVELUP
-  teleport: ENTITY_ENDERMAN_TELEPORT
-  error: ENTITY_VILLAGER_NO
-  queue-cleared: ENTITY_ENDER_DRAGON_GROWL
-  opponent-found: ENTITY_EXPERIENCE_ORB_PICKUP
-  cooldown: BLOCK_NOTE_BLOCK_PLING
+  queue-join: "ENTITY_EXPERIENCE_ORB_PICKUP"
+  queue-cleared: "BLOCK_NOTE_BLOCK_BASS"
+  opponent-found: "ENTITY_PLAYER_LEVELUP"
+  teleport: "ENTITY_ENDERMAN_TELEPORT"
+  error: "ENTITY_VILLAGER_NO"
+
+# Debug mode - more detailed logging
+debug: false

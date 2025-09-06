@@ -1,42 +1,47 @@
 package com.kingrbxd.rtpqueue.listeners;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
-import com.kingrbxd.rtpqueue.handlers.CooldownManager;
+import com.kingrbxd.rtpqueue.handlers.TeleportHandler;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 
 public class PlayerMoveListener implements Listener {
     private final AdvancedRTPQueue plugin;
-    private final CooldownManager cooldownManager;
 
     public PlayerMoveListener(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
-        this.cooldownManager = plugin.getCooldownManager();
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerMove(PlayerMoveEvent event) {
-        // Only check if cancel-on-move is enabled
-        if (!plugin.getConfig().getBoolean("cooldowns.cancel-on-move", true)) {
+        // Skip if movement cancellation is disabled
+        if (!plugin.getConfig().getBoolean("teleport.cancel-on-move", true)) {
             return;
         }
 
         Player player = event.getPlayer();
 
-        // Check if player is in pre-teleport countdown
-        if (cooldownManager.isInPreTeleport(player)) {
-            Location from = event.getFrom();
-            Location to = event.getTo();
-
-            // Only cancel if player changed block position (not just looking around)
-            if (to != null && (from.getBlockX() != to.getBlockX() ||
-                    from.getBlockY() != to.getBlockY() ||
-                    from.getBlockZ() != to.getBlockZ())) {
-                cooldownManager.cancelPreTeleport(player);
-            }
+        // Skip if player doesn't have a pending teleport
+        if (!TeleportHandler.hasPendingTeleport(player)) {
+            return;
         }
+
+        // Get from/to locations
+        Location from = event.getFrom();
+        Location to = event.getTo();
+
+        // Skip if only looking around (head movement)
+        if (to != null && from.getBlockX() == to.getBlockX()
+                && from.getBlockY() == to.getBlockY()
+                && from.getBlockZ() == to.getBlockZ()) {
+            return;
+        }
+
+        // Cancel teleport for the entire group
+        TeleportHandler.cancelTeleportGroup(player, "moved");
     }
 }

@@ -5,11 +5,11 @@ import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.ArrayList;
 
 public class CooldownManager {
     private final AdvancedRTPQueue plugin;
@@ -135,13 +135,10 @@ public class CooldownManager {
         playersToTeleport.add(player1);
         playersToTeleport.add(player2);
 
-        // Store for later use in runnable
-        final WorldManager.WorldSettings finalWorldSettings = worldSettings;
-
         // Skip countdown if disabled with -1
         if (preTeleportTime <= 0) {
-            // Directly teleport players
-            TeleportHandler.teleportPlayersToWorld(playersToTeleport, finalWorldSettings);
+            // Directly teleport players using TeleportHandler's method
+            TeleportHandler.tryTeleport(player1);
             return true;
         }
 
@@ -193,8 +190,8 @@ public class CooldownManager {
                     teleportTasks.remove(uuid1);
                     teleportTasks.remove(uuid2);
 
-                    // Perform the teleport with correct method signature
-                    TeleportHandler.teleportPlayersToWorld(playersToTeleport, finalWorldSettings);
+                    // Trigger teleport through TeleportHandler's public method
+                    TeleportHandler.tryTeleport(player1);
                     cancel();
                 }
             }
