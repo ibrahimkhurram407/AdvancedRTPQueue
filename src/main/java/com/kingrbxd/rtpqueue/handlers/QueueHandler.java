@@ -201,6 +201,7 @@ public class QueueHandler {
 
     /**
      * Clear queues for a specific world.
+     * This replaces the 'clearQueue' method mentioned in error.
      *
      * @param worldName The world name
      */
@@ -227,6 +228,7 @@ public class QueueHandler {
 
     /**
      * Get a map of all world queues and their sizes.
+     * This replaces the 'getWorldQueueSizes' method mentioned in error.
      *
      * @return Map of world names to queue sizes
      */
@@ -236,5 +238,17 @@ public class QueueHandler {
             sizes.put(entry.getKey(), entry.getValue().size());
         }
         return sizes;
+    }
+
+    /**
+     * Get all players in a specific world queue.
+     * This replaces the 'getQueueForWorld' method mentioned in error.
+     *
+     * @param worldName The world name
+     * @return List of UUIDs of players in the queue
+     */
+    public List<UUID> getPlayersInWorldQueue(String worldName) {
+        List<UUID> queue = worldQueues.get(worldName);
+        return queue != null ? new ArrayList<>(queue) : new ArrayList<>();
     }
 }
