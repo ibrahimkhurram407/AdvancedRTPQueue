@@ -4,7 +4,7 @@ main: com.kingrbxd.rtpqueue.AdvancedRTPQueue
 author: KingRBxD
 description: A highly optimized Random Teleportation Queue plugin with sound effects and bStats.
 api-version: 1.19
-softdepend: [GriefPrevention, Factions, Towny]
+softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI]
 
 commands:
   rtpqueue:

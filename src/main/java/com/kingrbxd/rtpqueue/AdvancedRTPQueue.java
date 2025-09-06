@@ -1,156 +1,203 @@
 package com.kingrbxd.rtpqueue;
 
-import org.bstats.bukkit.Metrics;
 import com.kingrbxd.rtpqueue.commands.RTPQueueCommand;
 import com.kingrbxd.rtpqueue.handlers.*;
-import com.kingrbxd.rtpqueue.listeners.PlayerMoveListener;
-import com.kingrbxd.rtpqueue.listeners.PlayerQuitListener;
-import com.kingrbxd.rtpqueue.utils.ConfigUtil;
-import com.kingrbxd.rtpqueue.utils.MessageUtil;
-import org.bukkit.command.PluginCommand;
+import com.kingrbxd.rtpqueue.listeners.PlayerListener;
+import com.kingrbxd.rtpqueue.placeholders.PlaceholderManager;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-public final class AdvancedRTPQueue extends JavaPlugin {
+/**
+ * Main plugin class for AdvancedRTPQueue.
+ */
+public class AdvancedRTPQueue extends JavaPlugin {
     private static AdvancedRTPQueue instance;
     private QueueHandler queueHandler;
     private CooldownManager cooldownManager;
     private WorldManager worldManager;
     private ClaimProtectionHandler claimProtectionHandler;
-    private BukkitTask queueClearTask;
+    private PlaceholderManager placeholderManager;
+    private BukkitTask clearTask;
 
     @Override
     public void onEnable() {
         instance = this;
+
+        // Save default config
         saveDefaultConfig();
 
-        // Initialize utils first
-        MessageUtil.initialize(this);
-        loadConfiguration();
+        // Initialize handlers
+        queueHandler = new QueueHandler(this);
+        cooldownManager = new CooldownManager(this);
+        worldManager = new WorldManager(this);
+        claimProtectionHandler = new ClaimProtectionHandler(this);
 
-        // Register event listeners
-        getServer().getPluginManager().registerEvents(new PlayerQuitListener(), this);
-        getServer().getPluginManager().registerEvents(new PlayerMoveListener(this), this);
+        // Register commands
+        getCommand("rtpqueue").setExecutor(new RTPQueueCommand(this));
 
-        // Register main command
-        registerCommand("rtpqueue", new RTPQueueCommand(this));
+        // Register listeners
+        getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
 
-        // Start bStats
-        new Metrics(this, 25138);
+        // Start queue clear task
+        startClearTask();
 
-        getLogger().info("AdvancedRTPQueue v2.0 by KingRBxD enabled!");
+        // Check for other hooks
+        setupHooks();
+
+        getLogger().info("AdvancedRTPQueue has been enabled!");
     }
 
     /**
-     * Load or reload all configuration and initialize handlers
+     * Setup hooks with other plugins
      */
-    private void loadConfiguration() {
-        // Load messages
-        ConfigUtil.loadMessages();
-
-        // Initialize or reinitialize handlers
-        if (queueHandler == null) {
-            queueHandler = new QueueHandler();
-        }
-
-        if (cooldownManager == null) {
-            cooldownManager = new CooldownManager(this);
-        }
-
-        if (worldManager == null) {
-            worldManager = new WorldManager(this);
-        } else {
-            worldManager.reload();
-        }
-
-        if (claimProtectionHandler == null) {
-            claimProtectionHandler = new ClaimProtectionHandler(this);
-        }
+    private void setupHooks() {
+        // Set up PlaceholderAPI
+        placeholderManager = new PlaceholderManager(this);
 
         // Check for claim protection plugins
-        claimProtectionHandler.setupProtection();
+        if (getConfig().getBoolean("claim-protection.enabled", true)) {
+            boolean anyHookFound = false;
 
-        // Set up queue clearing task
-        setupQueueClearTask();
-    }
+            if (getConfig().getBoolean("claim-protection.plugins.grief-prevention", true)) {
+                if (Bukkit.getPluginManager().getPlugin("GriefPrevention") != null) {
+                    getLogger().info("GriefPrevention found - claim protection enabled.");
+                    anyHookFound = true;
+                } else {
+                    getLogger().info("GriefPrevention not found - claim protection for this plugin disabled.");
+                }
+            }
 
-    /**
-     * Set up the queue clear task (cancels existing task if running)
-     */
-    private void setupQueueClearTask() {
-        // Cancel existing task if it exists
-        if (queueClearTask != null) {
-            queueClearTask.cancel();
+            if (getConfig().getBoolean("claim-protection.plugins.factions", true)) {
+                if (Bukkit.getPluginManager().getPlugin("Factions") != null) {
+                    getLogger().info("Factions found - claim protection enabled.");
+                    anyHookFound = true;
+                } else {
+                    getLogger().info("Factions not found - claim protection for this plugin disabled.");
+                }
+            }
+
+            if (getConfig().getBoolean("claim-protection.plugins.towny", true)) {
+                if (Bukkit.getPluginManager().getPlugin("Towny") != null) {
+                    getLogger().info("Towny found - claim protection enabled.");
+                    anyHookFound = true;
+                } else {
+                    getLogger().info("Towny not found - claim protection for this plugin disabled.");
+                }
+            }
+
+            if (!anyHookFound) {
+                getLogger().info("No claim protection plugins found. Players may be teleported to claimed areas.");
+            }
         }
-
-        // Start queue clearing task with updated interval
-        int clearInterval = getConfig().getInt("queue.clear-interval", 300);
-        queueClearTask = new QueueClearTask(this).runTaskTimer(this, clearInterval * 20L, clearInterval * 20L);
-        getLogger().info("Queue clear task scheduled: every " + clearInterval + " seconds");
     }
 
     @Override
     public void onDisable() {
-        if (queueHandler != null) {
-            queueHandler.clearQueue();
+        // Cancel tasks
+        if (clearTask != null) {
+            clearTask.cancel();
         }
 
-        if (queueClearTask != null) {
-            queueClearTask.cancel();
-        }
+        // Clear queues
+        queueHandler.clearAllQueues();
 
-        getLogger().info("AdvancedRTPQueue disabled!");
+        getLogger().info("AdvancedRTPQueue has been disabled!");
+    }
+
+    @Override
+    public void reloadConfig() {
+        super.reloadConfig();
+
+        // Reload settings
+        worldManager.loadWorldSettings();
+
+        // Restart clear task with new interval
+        if (clearTask != null) {
+            clearTask.cancel();
+        }
+        startClearTask();
     }
 
     /**
-     * Reloads the plugin configuration and all handlers.
+     * Start the queue clear task.
      */
-    public void reload() {
-        // Reload config file
-        reloadConfig();
+    private void startClearTask() {
+        int clearInterval = getConfig().getInt("queue.clear-interval", 300);
 
-        // Reload all configuration and handlers
-        loadConfiguration();
+        if (clearInterval > 0) {
+            clearTask = getServer().getScheduler().runTaskTimer(this, () -> {
+                // Clear all queues
+                queueHandler.clearAllQueues();
 
-        getLogger().info("AdvancedRTPQueue configuration reloaded.");
-        getLogger().info("Note: For some settings like cooldowns and message formats, a server restart is recommended.");
+                // Broadcast message if enabled
+                if (getConfig().getBoolean("broadcast-queue-clear", false)) {
+                    getServer().broadcastMessage(getConfig().getString("messages.queue-cleared"));
+                }
+            }, clearInterval * 20L, clearInterval * 20L);
+        }
     }
 
     /**
-     * Registers a command with an executor and tab completer.
+     * Get the plugin instance.
      *
-     * @param name     The command name.
-     * @param executor The command executor (must also implement TabCompleter if needed).
+     * @return The plugin instance
      */
-    private void registerCommand(String name, Object executor) {
-        PluginCommand command = getCommand(name);
-        if (command != null) {
-            command.setExecutor((org.bukkit.command.CommandExecutor) executor);
-            if (executor instanceof org.bukkit.command.TabCompleter) {
-                command.setTabCompleter((org.bukkit.command.TabCompleter) executor);
-            }
-        } else {
-            getLogger().warning("Failed to register command: " + name);
-        }
-    }
-
     public static AdvancedRTPQueue getInstance() {
         return instance;
     }
 
+    /**
+     * Get the queue handler.
+     *
+     * @return The queue handler
+     */
     public QueueHandler getQueueHandler() {
         return queueHandler;
     }
 
+    /**
+     * Get the cooldown manager.
+     *
+     * @return The cooldown manager
+     */
     public CooldownManager getCooldownManager() {
         return cooldownManager;
     }
 
+    /**
+     * Get the world manager.
+     *
+     * @return The world manager
+     */
     public WorldManager getWorldManager() {
         return worldManager;
     }
 
+    /**
+     * Get the claim protection handler.
+     *
+     * @return The claim protection handler
+     */
     public ClaimProtectionHandler getClaimProtectionHandler() {
         return claimProtectionHandler;
+    }
+
+    /**
+     * Get the placeholder manager.
+     *
+     * @return The placeholder manager
+     */
+    public PlaceholderManager getPlaceholderManager() {
+        return placeholderManager;
+    }
+
+    /**
+     * Check if PlaceholderAPI integration is enabled.
+     *
+     * @return True if PlaceholderAPI is hooked
+     */
+    public boolean isPlaceholderAPIEnabled() {
+        return placeholderManager != null && placeholderManager.isPlaceholderAPIEnabled();
     }
 }
