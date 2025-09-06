@@ -1,23 +1,19 @@
 package com.kingrbxd.rtpqueue.handlers;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
-import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
-import org.bukkit.configuration.ConfigurationSection;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Manages world settings for RTP.
+ * Complete world manager with all features implemented
  */
 public class WorldManager {
     private final AdvancedRTPQueue plugin;
-    private final Map<String, WorldSettings> worldSettingsMap = new HashMap<>();
-    private WorldSettings defaultWorldSettings;
+    private final Map<String, WorldSettings> worldSettings = new ConcurrentHashMap<>();
+    private final Map<String, String> displayNames = new ConcurrentHashMap<>();
 
     public WorldManager(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
@@ -25,217 +21,161 @@ public class WorldManager {
     }
 
     /**
-     * Load world settings from config.
+     * Load world settings from configuration
      */
     public void loadWorldSettings() {
-        worldSettingsMap.clear();
+        worldSettings.clear();
+        displayNames.clear();
 
-        // Load default world settings
-        String defaultWorldName = plugin.getConfig().getString("teleport.default-world", "world");
-        String defaultWorldDisplayName = plugin.getConfig().getString("teleport.default-world-display-name", "Overworld");
+        // Load default world
+        String defaultWorld = plugin.getConfigManager().getString("teleport.default-world", "world");
+        String defaultDisplayName = plugin.getConfigManager().getString("teleport.default-world-display-name", "&aOverworld");
 
-        int minX = plugin.getConfig().getInt("teleport.min-x", -500);
-        int maxX = plugin.getConfig().getInt("teleport.max-x", 500);
-        int minZ = plugin.getConfig().getInt("teleport.min-z", -500);
-        int maxZ = plugin.getConfig().getInt("teleport.max-z", 500);
-
-        boolean safeTeleport = plugin.getConfig().getBoolean("teleport.safe-teleport", true);
-        int maxAttempts = plugin.getConfig().getInt("teleport.max-teleport-attempts", 10);
-
-        defaultWorldSettings = new WorldSettings(
-                defaultWorldName,
-                defaultWorldDisplayName,
-                null, // No permission needed for default world
-                minX,
-                maxX,
-                minZ,
-                maxZ,
-                safeTeleport,
-                maxAttempts
+        WorldSettings defaultSettings = new WorldSettings(
+                defaultWorld,
+                defaultDisplayName,
+                plugin.getConfigManager().getInt("teleport.min-x", -1000),
+                plugin.getConfigManager().getInt("teleport.max-x", 1000),
+                plugin.getConfigManager().getInt("teleport.min-z", -1000),
+                plugin.getConfigManager().getInt("teleport.max-z", 1000),
+                plugin.getConfigManager().getInt("teleport.min-y", 60),
+                plugin.getConfigManager().getInt("teleport.max-y", 250),
+                plugin.getConfigManager().getBoolean("teleport.safe-teleport", true),
+                plugin.getConfigManager().getInt("teleport.max-teleport-attempts", 15),
+                null
         );
 
-        worldSettingsMap.put(defaultWorldName, defaultWorldSettings);
+        worldSettings.put(defaultWorld, defaultSettings);
+        displayNames.put(defaultWorld, defaultDisplayName);
 
         // Load other worlds if enabled
-        if (plugin.getConfig().getBoolean("teleport.other-worlds.enabled", false)) {
-            ConfigurationSection worldsSection = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds");
-
-            if (worldsSection != null) {
-                for (String key : worldsSection.getKeys(false)) {
-                    ConfigurationSection sec = worldsSection.getConfigurationSection(key);
-                    if (sec == null) continue;
-
-                    String worldName = sec.getString("name", key);
-                    String displayName = sec.getString("display-name", worldName);
-                    String permission = sec.getString("permission", null);
-
-                    int worldMinX = sec.getInt("min-x", minX);
-                    int worldMaxX = sec.getInt("max-x", maxX);
-                    int worldMinZ = sec.getInt("min-z", minZ);
-                    int worldMaxZ = sec.getInt("max-z", maxZ);
-
-                    boolean worldSafeTeleport = sec.getBoolean("safe-teleport", safeTeleport);
-                    int worldMaxAttempts = sec.getInt("max-teleport-attempts", maxAttempts);
-
-                    WorldSettings settings = new WorldSettings(
-                            worldName,
-                            displayName,
-                            permission,
-                            worldMinX,
-                            worldMaxX,
-                            worldMinZ,
-                            worldMaxZ,
-                            worldSafeTeleport,
-                            worldMaxAttempts
-                    );
-
-                    worldSettingsMap.put(worldName, settings);
-                }
-            }
+        if (plugin.getConfigManager().getBoolean("teleport.other-worlds.enabled")) {
+            loadOtherWorlds();
         }
 
-        // Also allow a simple map-style config teleport.world-display-names.<world> = "<display>"
-        ConfigurationSection mapStyle = plugin.getConfig().getConfigurationSection("teleport.world-display-names");
-        if (mapStyle != null) {
-            for (String worldName : mapStyle.getKeys(false)) {
-                String display = mapStyle.getString(worldName, worldName);
-                // If not present already, add with reasonable defaults
-                worldSettingsMap.putIfAbsent(worldName,
-                        new WorldSettings(worldName, display, null, minX, maxX, minZ, maxZ, safeTeleport, maxAttempts));
-            }
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Loaded settings for " + worldSettings.size() + " worlds");
         }
     }
 
     /**
-     * Get settings for a specific world.
-     *
-     * @param worldName The world name
-     * @return World settings or default if not found
+     * Load other world configurations
+     */
+    private void loadOtherWorlds() {
+        if (!plugin.getConfig().contains("teleport.other-worlds.worlds")) {
+            return;
+        }
+
+        Set<String> worldKeys = plugin.getConfig().getConfigurationSection("teleport.other-worlds.worlds").getKeys(false);
+
+        for (String worldKey : worldKeys) {
+            String basePath = "teleport.other-worlds.worlds." + worldKey + ".";
+
+            String worldName = plugin.getConfig().getString(basePath + "name");
+            String displayName = plugin.getConfig().getString(basePath + "display-name", worldName);
+            String permission = plugin.getConfig().getString(basePath + "permission");
+
+            if (worldName == null || worldName.isEmpty()) {
+                continue;
+            }
+
+            WorldSettings settings = new WorldSettings(
+                    worldName,
+                    displayName,
+                    plugin.getConfig().getInt(basePath + "min-x", -500),
+                    plugin.getConfig().getInt(basePath + "max-x", 500),
+                    plugin.getConfig().getInt(basePath + "min-z", -500),
+                    plugin.getConfig().getInt(basePath + "max-z", 500),
+                    plugin.getConfig().getInt(basePath + "min-y", 60),
+                    plugin.getConfig().getInt(basePath + "max-y", 250),
+                    plugin.getConfig().getBoolean(basePath + "safe-teleport", true),
+                    plugin.getConfig().getInt(basePath + "max-teleport-attempts", 15),
+                    permission
+            );
+
+            worldSettings.put(worldName, settings);
+            displayNames.put(worldName, displayName);
+        }
+    }
+
+    /**
+     * Get world settings for a world
      */
     public WorldSettings getWorldSettings(String worldName) {
-        return worldSettingsMap.getOrDefault(worldName, defaultWorldSettings);
+        return worldSettings.get(worldName);
     }
 
     /**
-     * Convenience method used by other code (like PlaceholderManager) to get the colorized display name.
-     *
-     * @param worldName internal world name
-     * @return colorized display name (falls back to raw world name or "none")
+     * Get display name for a world
      */
     public String getDisplayName(String worldName) {
-        if (worldName == null) return MessageUtil.colorize("none");
-
-        WorldSettings s = getWorldSettings(worldName);
-        if (s != null) {
-            return s.getDisplayName();
-        }
-
-        // fallback to config key or raw name
-        String fallback = plugin.getConfig().getString("teleport.world-display-names." + worldName, worldName);
-        return MessageUtil.colorize(fallback == null ? "none" : fallback);
+        return displayNames.getOrDefault(worldName, worldName);
     }
 
     /**
-     * Get default world settings.
-     *
-     * @return Default world settings
-     */
-    public WorldSettings getDefaultWorldSettings() {
-        return defaultWorldSettings;
-    }
-
-    /**
-     * Check if a world name is valid and configured for RTP.
-     *
-     * @param worldName The world name to check
-     * @return True if the world is valid for RTP
+     * Check if world is valid and configured
      */
     public boolean isValidWorld(String worldName) {
-        // Check if the world is in our settings map
-        if (worldSettingsMap.containsKey(worldName)) {
-            return true;
-        }
-
-        // Check if it's the default world
-        if (defaultWorldSettings.getName().equalsIgnoreCase(worldName)) {
-            return true;
-        }
-
-        // Check if the world exists on the server but isn't configured
-        World world = Bukkit.getWorld(worldName);
-        return world != null;
+        return worldSettings.containsKey(worldName) && Bukkit.getWorld(worldName) != null;
     }
 
     /**
-     * Get a list of all valid world names for RTP.
-     *
-     * @return List of valid world names
+     * Get all valid world names
      */
-    public List<String> getValidWorldNames() {
-        return new ArrayList<>(worldSettingsMap.keySet());
+    public Set<String> getValidWorldNames() {
+        Set<String> validWorlds = new HashSet<>();
+        for (String worldName : worldSettings.keySet()) {
+            if (Bukkit.getWorld(worldName) != null) {
+                validWorlds.add(worldName);
+            }
+        }
+        return validWorlds;
     }
 
     /**
-     * World settings class.
+     * Get all configured world names
      */
-    public class WorldSettings {
+    public Set<String> getAllWorldNames() {
+        return new HashSet<>(worldSettings.keySet());
+    }
+
+    /**
+     * World settings class
+     */
+    public static class WorldSettings {
         private final String name;
         private final String displayName;
-        private final String permission;
-        private final int minX;
-        private final int maxX;
-        private final int minZ;
-        private final int maxZ;
-        private final boolean safeTeleport;
+        private final int minX, maxX, minZ, maxZ, minY, maxY;
+        private final boolean safeteleport;
         private final int maxTeleportAttempts;
+        private final String permission;
 
-        public WorldSettings(String name, String displayName, String permission, int minX, int maxX, int minZ, int maxZ, boolean safeTeleport, int maxTeleportAttempts) {
+        public WorldSettings(String name, String displayName, int minX, int maxX, int minZ, int maxZ,
+                             int minY, int maxY, boolean safeteleport, int maxTeleportAttempts, String permission) {
             this.name = name;
             this.displayName = displayName;
-            this.permission = permission;
             this.minX = minX;
             this.maxX = maxX;
             this.minZ = minZ;
             this.maxZ = maxZ;
-            this.safeTeleport = safeTeleport;
+            this.minY = minY;
+            this.maxY = maxY;
+            this.safeteleport = safeteleport;
             this.maxTeleportAttempts = maxTeleportAttempts;
+            this.permission = permission;
         }
 
-        public String getName() {
-            return name;
-        }
-
-        public String getDisplayName() {
-            return MessageUtil.colorize(displayName == null ? name : displayName);
-        }
-
-        public String getPermission() {
-            return permission;
-        }
-
-        public int getMinX() {
-            return minX;
-        }
-
-        public int getMaxX() {
-            return maxX;
-        }
-
-        public int getMinZ() {
-            return minZ;
-        }
-
-        public int getMaxZ() {
-            return maxZ;
-        }
-
-        public boolean isSafeTeleport() {
-            return safeTeleport;
-        }
-
-        public int getMaxTeleportAttempts() {
-            return maxTeleportAttempts;
-        }
+        public String getName() { return name; }
+        public String getDisplayName() { return displayName; }
+        public int getMinX() { return minX; }
+        public int getMaxX() { return maxX; }
+        public int getMinZ() { return minZ; }
+        public int getMaxZ() { return maxZ; }
+        public int getMinY() { return minY; }
+        public int getMaxY() { return maxY; }
+        public boolean isSafeTelepor() { return safeteleport; }
+        public int getMaxTeleportAttempts() { return maxTeleportAttempts; }
+        public String getPermission() { return permission; }
 
         public World getBukkitWorld() {
             return Bukkit.getWorld(name);

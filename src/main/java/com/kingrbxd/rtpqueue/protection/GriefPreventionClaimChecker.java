@@ -5,18 +5,20 @@ import me.ryanhamshire.GriefPrevention.GriefPrevention;
 import org.bukkit.Location;
 
 /**
- * Implementation of ClaimChecker for GriefPrevention
+ * Complete GriefPrevention claim checker
  */
 public class GriefPreventionClaimChecker implements ClaimChecker {
 
     @Override
     public boolean isLocationClaimed(Location location) {
+        if (location == null) {
+            return false;
+        }
+
         try {
-            // Direct API call to GriefPrevention
             Claim claim = GriefPrevention.instance.dataStore.getClaimAt(location, true, null);
             return claim != null;
         } catch (Exception e) {
-            // If any error occurs, assume unclaimed to avoid blocking teleport
             return false;
         }
     }

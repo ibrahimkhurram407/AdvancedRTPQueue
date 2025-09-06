@@ -5,21 +5,22 @@ import com.palmergames.bukkit.towny.object.TownBlock;
 import org.bukkit.Location;
 
 /**
- * Implementation of ClaimChecker for Towny
+ * Complete Towny claim checker
  */
 public class TownyClaimChecker implements ClaimChecker {
 
     @Override
     public boolean isLocationClaimed(Location location) {
+        if (location == null) {
+            return false;
+        }
+
         try {
-            // Direct API call to Towny
             TownyAPI townyAPI = TownyAPI.getInstance();
             TownBlock townBlock = townyAPI.getTownBlock(location);
 
-            // If townBlock exists, the land is claimed
             return townBlock != null;
         } catch (Exception e) {
-            // If any error occurs, assume unclaimed to avoid blocking teleport
             return false;
         }
     }

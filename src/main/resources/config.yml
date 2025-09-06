@@ -1,59 +1,76 @@
-# AdvancedRTPQueue - Configuration
-# Version: 2.2
-# Notes:
-#  - Keep debug: false in production. Set debug: true only when troubleshooting.
-#  - Placeholders supported in messages: {player}, {time}, {players}, {world}
+# AdvancedRTPQueue v2.3 Configuration
 
-# Queue behaviour
+# Plugin settings
+plugin:
+  # Debug mode - shows detailed information for troubleshooting
+  debug: false
+
+# Queue behavior settings
 queue:
-  # Number of players required to be in queue before teleporting
+  # Number of players required before teleporting
   required-players: 2
 
-  # Time in seconds before an inactive queue is cleared (0 = disabled)
+  # Auto-clear inactive queues (seconds, 0 = disabled)
   clear-interval: 300
 
-  # Allow players to switch worlds while queued (true = allow)
+  # Allow players to switch worlds while queued
   allow-world-switching: true
 
-# Cooldowns
+  # Automatically join default world queue on login
+  auto-join-on-login: false
+
+# Cooldown system (all in seconds)
 cooldowns:
-  # Global cooldown in seconds between queue joins (-1 to disable)
+  # Cooldown between queue joins
   queue-join: 60
 
-  # Wait time in seconds before teleporting after match is found (-1 or 0 for immediate)
+  # Cooldown after leaving queue
+  queue-leave: 10
+
+  # Wait time before teleporting after match found
   pre-teleport: 5
 
-  # Per-world cooldowns (enable to use)
+  # Cooldown after successful teleport
+  post-teleport: 120
+
+  # Per-world cooldowns (optional)
   per-world-cooldown:
     enabled: false
     worlds:
-      # Example overrides (only used when enabled=true)
-      # world: 120
-      # world_nether: 180
-      # world_the_end: 240
-      {}
+      world: 120
+      world_nether: 180
 
-# Teleport settings
+# Teleportation settings
 teleport:
-  # Default world and friendly display name
+  # Default world configuration
   default-world: "world"
-  default-world-display-name: "Overworld"
+  default-world-display-name: "&aOverworld"
 
-  # X/Z boundaries for random selection (inclusive)
-  min-x: -500
-  max-x: 500
-  min-z: -500
-  max-z: 500
+  # Coordinate boundaries for teleportation
+  min-x: -1000
+  max-x: 1000
+  min-z: -1000
+  max-z: 1000
+  min-y: 60
+  max-y: 250
 
-  # Safety options
-  safe-teleport: true                # require safe blocks + air for player feet/head
-  cancel-on-move: true               # cancel pre-teleport/queued teleport on movement
-  max-teleport-attempts: 10          # attempts per async search for a safe location
+  # Safety and behavior settings
+  safe-teleport: true
+  cancel-on-move: true
+  cancel-on-damage: false
+  cancel-on-chat: false
+  max-teleport-attempts: 15
 
-  # Fallback behaviour
-  allow-fallback-locations: false    # use world spawn if no safe random location is found
+  # Async location finding settings
+  async-location-search: true
+  search-timeout: 30
+  allow-fallback-locations: true
 
-  # Blocks considered unsafe to teleport onto (use enum names)
+  # Location caching
+  cache-safe-locations: true
+  max-cached-locations: 10
+
+  # Blocks that are unsafe to teleport on/near
   unsafe-blocks:
     - LAVA
     - WATER
@@ -66,82 +83,237 @@ teleport:
     - SWEET_BERRY_BUSH
     - WITHER_ROSE
     - POWDER_SNOW
+    - END_PORTAL
+    - NETHER_PORTAL
 
-  # Multi-world support — per-world overrides
+  # Additional worlds configuration
   other-worlds:
-    enabled: false
+    enabled: true
     worlds:
-      # Example entry format
-      # nether:
-      #   name: "world_nether"
-      #   display-name: "Nether"
-      #   permission: "rtpqueue.world.nether"
-      #   min-x: -500
-      #   max-x: 500
-      #   min-z: -500
-      #   max-z: 500
-      #   safe-teleport: true
-      #   max-teleport-attempts: 10
-      {}
+      nether:
+        name: "world_nether"
+        display-name: "&cThe Nether"
+        permission: "rtpqueue.world.nether"
+        min-x: -500
+        max-x: 500
+        min-z: -500
+        max-z: 500
+        min-y: 30
+        max-y: 120
+        safe-teleport: true
+        max-teleport-attempts: 20
+      end:
+        name: "world_the_end"
+        display-name: "&dThe End"
+        permission: "rtpqueue.world.end"
+        min-x: -200
+        max-x: 200
+        min-z: -200
+        max-z: 200
+        min-y: 50
+        max-y: 120
+        safe-teleport: true
+        max-teleport-attempts: 25
 
 # Claim protection integration
 claim-protection:
   enabled: true
+  check-destination: true
+  check-source: false
   plugins:
     grief-prevention: true
     factions: true
     towny: true
 
-# Messages (consistent keys used by code)
+# User Interface settings
+ui:
+  # Message prefix for all plugin messages
+  prefix: "&8[&6RTP Queue&8] &r"
+
+  # Messages that should NOT have prefix
+  no-prefix-messages:
+    - "teleporting-title"
+    - "teleporting-subtitle"
+    - "countdown-title"
+    - "countdown-subtitle"
+
+  # Progress bar configuration
+  progress-bar:
+    enabled: true
+    character: "▌"
+    length: 20
+    completed-color: "&a"
+    remaining-color: "&7"
+
+  # Action bar settings
+  action-bar:
+    enabled: true
+    queue-wait: "&7Waiting for players... &e{current}&7/&e{required}"
+    countdown: "&6Teleporting in &c{time} &6seconds..."
+    update-interval: 20
+
+# Title and subtitle configuration
+titles:
+  queue-joined:
+    title: "&6Queue Joined"
+    subtitle: "&7Waiting for &e{required} &7players"
+    fade-in: 10
+    stay: 40
+    fade-out: 10
+
+  match-found:
+    title: "&aMatch Found!"
+    subtitle: "&7Teleporting in &c{time} &7seconds"
+    fade-in: 5
+    stay: 30
+    fade-out: 10
+
+  countdown:
+    title: "&c{time}"
+    subtitle: "&7Get ready..."
+    fade-in: 0
+    stay: 25
+    fade-out: 5
+
+  teleported:
+    title: "&aTeleported!"
+    subtitle: "&7Good luck exploring!"
+    fade-in: 10
+    stay: 30
+    fade-out: 20
+
+# All plugin messages
 messages:
   # Queue messages
-  join-queue: "&#00ff00✔ &aYou joined the queue."
-  leave-queue: "&#ff0000❌ &cYou left the queue."
-  already-in-queue: "&#ffa500⚠ &eYou're already in the queue!"
-  not-in-queue: "&#ff4444⚠ &cYou're not in the queue."
-  waiting-for-opponent: "&#0099ff⏳ &bWaiting for a match..."
-  queue-cleared: "&#ff3300 &cQueue cleared."
+  join-queue: "&aYou joined the &e{world} &aqueue! &7({current}/{required})"
+  leave-queue: "&cYou left the queue."
+  already-in-queue: "&eYou're already in the &6{world} &equeue!"
+  not-in-queue: "&cYou're not in any queue."
 
-  # Teleport messages
-  opponent-found: "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds with {players} players..."
-  teleport-start: "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds..."
-  teleporting-title: "&#ff6600 &6Teleporting..."
-  teleporting-subtitle: "&#ff3333 &cGet ready!"
-  teleported: "&#00ff00✅ &aTeleported!"
-  teleport-complete: "&#00ff00✅ &aTeleported to {world}!"
-  teleport-failed: "&#ff0000❌ &cTeleport failed! No safe spot."
-  world-teleport: "&#00ccff &bTeleporting to {world}..."
-  invalid-world: "&#ff0000⚠ &cError: Invalid world!"
+  # Status messages
+  waiting-for-players: "&7Waiting for &e{needed} &7more player(s)..."
+  queue-status: "&7Queue Status: &e{current}&7/&e{required} &7players"
+  position-in-queue: "&7You are &e#{position} &7in the queue."
 
-  # Cancel messages (used with messages.cancel-<reason> lookups)
-  cancel-moved: "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."
-  cancel-left: "&#ff6600⚠ &cTeleport cancelled! You left the server."
-  cancel-not-enough-players: "&#ff6600⚠ &cTeleport cancelled! Not enough players."
-  cancel-no-safe-locations: "&#ff6600⚠ &cTeleport cancelled! No safe location found."
-  cancel-invalid-world: "&#ff6600⚠ &cTeleport cancelled! Invalid world."
-  cancel-error: "&#ff6600⚠ &cTeleport cancelled due to an error."
+  # Teleportation messages
+  match-found: "&aMatch found! Teleporting in &c{time} &aseconds with &e{players} &aplayers..."
+  teleport-starting: "&6Preparing teleportation..."
+  teleporting: "&7Teleporting to &e{world}&7..."
+  teleported: "&aTeleported successfully to &e{world}&a!"
+  teleport-failed: "&cTeleport failed! No safe location found."
 
-  # Group cancellation messages (sent to other players)
-  group-teleport-cancelled: "&#ff6600⚠ &cTeleport cancelled because {player} {reason}!"
-  group-cancel-moved: "&#ff6600⚠ &cTeleport cancelled because {player} moved!"
-  group-cancel-left: "&#ff6600⚠ &cTeleport cancelled because {player} left!"
+  # Cancellation messages
+  cancelled-moved: "&cTeleport cancelled! You moved during countdown."
+  cancelled-left: "&cTeleport cancelled! You disconnected."
+  cancelled-damage: "&cTeleport cancelled! You took damage."
+  cancelled-chat: "&cTeleport cancelled! You chatted during countdown."
+  cancelled-not-enough: "&cTeleport cancelled! Not enough players remaining."
+  cancelled-error: "&cTeleport cancelled due to an error."
+  cancelled-timeout: "&cTeleport cancelled! Location search timed out."
+  cancelled-no-safe-locations: "&cTeleport cancelled! No safe locations found."
+  cancelled-invalid-world: "&cTeleport cancelled! Invalid world."
+  cancelled-shutdown: "&cTeleport cancelled! Server is shutting down."
 
-  # Other messages
-  reload: "&#00cc00 &aConfig reloaded!"
-  no-permission: "&#ff5555⛔ &cNo permission."
-  cooldown-active: "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds."
-  invalid-command: "&#ff5500❓ &cUnknown command. Try &e/rtpqueue."
-  claim-protected: "&#ff3333 &cCannot teleport to claimed land."
+  # Group cancellation message
+  group-cancelled: "&cTeleport cancelled because &e{player} &c{reason}!"
 
-# Sounds (use valid Sound enum names for target server version)
+  # Cooldown messages
+  cooldown-active: "&eYou must wait &c{time} &eseconds before using this again."
+  cooldown-queue-join: "&eYou must wait &c{time} &eseconds before joining a queue."
+  cooldown-post-teleport: "&eYou must wait &c{time} &eseconds before teleporting again."
+
+  # Error messages
+  no-permission: "&cYou don't have permission to do that."
+  invalid-world: "&cInvalid world: &e{world}"
+  world-not-loaded: "&cWorld &e{world} &cis not loaded."
+  no-permission-world: "&cYou don't have permission to teleport to &e{world}&c."
+  player-not-found: "&cPlayer &e{player} &cnot found."
+  invalid-command: "&cInvalid command usage. Type &e/rtpqueue &cfor help."
+
+  # Admin messages
+  reload-success: "&aConfiguration reloaded successfully!"
+  reload-failed: "&cFailed to reload configuration: &e{error}"
+  force-queue-success: "&aForced &e{player} &ainto &e{world} &aqueue."
+  force-queue-failed: "&cFailed to force &e{player} &cinto queue: &e{reason}"
+  queue-cleared: "&cAll queues have been cleared by an administrator."
+
+  # Statistics messages
+  stats-header: "&7&m----------&r &6Queue Statistics &7&m----------"
+  stats-total-players: "&7Total queued players: &e{total}"
+  stats-your-world: "&7Your queue (&e{world}&7): &e{current}&7/&e{required}"
+  stats-world-line: "&7{world}: &e{current}&7/&e{required} &7players"
+  stats-footer: "&7&m----------------------------------------"
+
+  # Protection messages
+  location-claimed: "&cCannot teleport to claimed land."
+  source-protected: "&cYou cannot teleport from this protected area."
+
+# Sound effects configuration
 sounds:
-  queue-join: "ENTITY_EXPERIENCE_ORB_PICKUP"
-  queue-cleared: "BLOCK_NOTE_BLOCK_BASS"
-  opponent-found: "ENTITY_PLAYER_LEVELUP"
-  teleport-start: "ENTITY_PLAYER_LEVELUP"
-  teleport-complete: "ENTITY_ENDERMAN_TELEPORT"
-  teleport: "ENTITY_ENDERMAN_TELEPORT"
-  error: "ENTITY_VILLAGER_NO"
+  enabled: true
 
-# Debug mode - keep false in production
-debug: false
+  queue-join:
+    sound: "ENTITY_EXPERIENCE_ORB_PICKUP"
+    volume: 1.0
+    pitch: 1.0
+
+  queue-leave:
+    sound: "ENTITY_ITEM_BREAK"
+    volume: 0.7
+    pitch: 0.8
+
+  match-found:
+    sound: "ENTITY_PLAYER_LEVELUP"
+    volume: 1.0
+    pitch: 1.2
+
+  countdown:
+    sound: "BLOCK_NOTE_BLOCK_PLING"
+    volume: 0.8
+    pitch: 1.5
+
+  teleport-success:
+    sound: "ENTITY_ENDERMAN_TELEPORT"
+    volume: 1.0
+    pitch: 1.0
+
+  teleport-cancelled:
+    sound: "ENTITY_VILLAGER_NO"
+    volume: 0.8
+    pitch: 0.9
+
+  error:
+    sound: "BLOCK_ANVIL_LAND"
+    volume: 0.5
+    pitch: 0.8
+
+# Particle effects configuration
+particles:
+  enabled: true
+
+  teleport-start:
+    particle: "PORTAL"
+    count: 50
+    spread: 1.0
+
+  teleport-success:
+    particle: "EXPLOSION_NORMAL"
+    count: 20
+    spread: 0.5
+
+# Advanced settings
+advanced:
+  # Async operations thread pool size
+  async-thread-pool: 4
+
+  # Cache settings
+  location-cache-size: 100
+  player-cache-timeout: 300
+
+  # Performance settings
+  max-concurrent-searches: 5
+  search-chunk-limit: 100
+
+  # Logging settings
+  log-teleports: true
+  log-queue-actions: false

@@ -1,16 +1,15 @@
 package com.kingrbxd.rtpqueue.tasks;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
-import com.kingrbxd.rtpqueue.handlers.QueueHandler;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Runnable task that clears inactive queues.
- * Extracted from inline runnable to a dedicated class for clarity and testability.
+ * Complete queue clear task with offline player cleanup
  */
 public class QueueClearTask implements Runnable {
     private final AdvancedRTPQueue plugin;
@@ -21,47 +20,55 @@ public class QueueClearTask implements Runnable {
 
     @Override
     public void run() {
-        if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info("QueueClearTask running...");
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Running queue maintenance task...");
         }
 
-        QueueHandler queueHandler = plugin.getQueueHandler();
-        if (queueHandler == null) return;
+        // Clean up offline players from queues
+        int removedOffline = plugin.getQueueHandler().removeOfflinePlayers();
 
-        Map<String, Integer> queueSizes = queueHandler.getAllQueueSizes();
+        // Get current queue information
+        Map<String, Object> queueInfo = plugin.getQueueHandler().getQueueInformation();
+
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Queue maintenance completed:");
+            plugin.getLogger().info("- Removed offline players: " + removedOffline);
+            plugin.getLogger().info("- Total queued players: " + queueInfo.get("totalQueuedPlayers"));
+            plugin.getLogger().info("- Active worlds: " + queueInfo.get("activeWorlds"));
+        }
+
+        Map<String, Integer> queueSizes = plugin.getQueueHandler().getAllQueueSizes();
         if (queueSizes.isEmpty()) {
             return;
         }
 
-        int requiredPlayers = plugin.getConfig().getInt("queue.required-players", 2);
+        int requiredPlayers = plugin.getConfigManager().getInt("queue.required-players", 2);
 
         for (Map.Entry<String, Integer> entry : queueSizes.entrySet()) {
             String worldName = entry.getKey();
             int size = entry.getValue();
 
-            // Clear world queue only if it's active but below the required players threshold
+            // Clear world queue only if it's active but below required players
             if (size > 0 && size < requiredPlayers) {
                 // Notify players in this queue
-                for (java.util.UUID uuid : queueHandler.getPlayersInWorldQueue(worldName)) {
-                    Player p = Bukkit.getPlayer(uuid);
-                    if (p != null && p.isOnline()) {
-                        MessageUtil.sendMessage(p, plugin.getConfig().getString("messages.queue-cleared", "&#ff6600⚠ &cQueue cleared due to inactivity."));
-                        MessageUtil.playSound(p, plugin.getConfig().getString("sounds.queue-cleared", ""));
+                for (UUID uuid : plugin.getQueueHandler().getPlayersInWorldQueue(worldName)) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null && player.isOnline()) {
+                        MessageUtil.sendMessage(player, "queue-cleared");
+                        MessageUtil.playSound(player, "queue-leave");
                     }
                 }
 
-                // Clear the queue for that world
-                queueHandler.clearWorldQueue(worldName);
+                // Clear the queue
+                plugin.getQueueHandler().clearWorldQueue(worldName);
 
-                if (plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                     plugin.getLogger().info("Cleared world queue '" + worldName + "' (" + size + " players)");
-                }
-
-                // Optional: broadcast
-                if (plugin.getConfig().getBoolean("broadcast-queue-clear", false)) {
-                    Bukkit.getServer().broadcastMessage(plugin.getConfig().getString("messages.queue-cleared", "&#ff6600⚠ &cQueue cleared due to inactivity."));
                 }
             }
         }
+
+        // Clean up expired cooldowns
+        plugin.getCooldownManager().cleanupExpiredCooldowns();
     }
 }

@@ -3,78 +3,74 @@ package com.kingrbxd.rtpqueue.handlers;
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Complete cooldown manager with all features implemented
+ */
 public class CooldownManager {
     private final AdvancedRTPQueue plugin;
-    private final Map<UUID, Long> queueCooldowns = new HashMap<>();
-    private final Map<String, Long> worldQueueCooldowns = new HashMap<>();
-    private final Map<UUID, Boolean> preTeleportPlayers = new HashMap<>();
-    private final Map<UUID, Integer> teleportTasks = new HashMap<>();
+    private final Map<UUID, Long> queueJoinCooldowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> queueLeaveCooldowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> postTeleportCooldowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<String, Long>> perWorldCooldowns = new ConcurrentHashMap<>();
 
     public CooldownManager(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
     }
 
     /**
-     * Check if a player can join the queue (not on cooldown).
-     *
-     * @param player The player to check
-     * @param worldName The world name for per-world cooldown check
-     * @return true if player can join, false if on cooldown
+     * Check if player can join queue
      */
-    public boolean canJoinQueue(Player player, String worldName) {
-        if (player.hasPermission("rtpqueue.admin")) {
-            return true; // Admins bypass cooldown
-        }
-
-        UUID uuid = player.getUniqueId();
-        long now = System.currentTimeMillis();
-
-        // Check per-world cooldown if enabled
-        if (plugin.getConfig().getBoolean("cooldowns.per-world-cooldown.enabled", false) && worldName != null) {
-            String key = uuid.toString() + ":" + worldName;
-            if (worldQueueCooldowns.containsKey(key)) {
-                int worldCooldown = plugin.getConfig().getInt("cooldowns.per-world-cooldown.worlds." + worldName, 60);
-
-                // Skip if cooldown is disabled (-1)
-                if (worldCooldown == -1) {
-                    return true;
-                }
-
-                long cooldownTime = worldQueueCooldowns.get(key);
-                if (now < cooldownTime) {
-                    int timeLeft = (int) ((cooldownTime - now) / 1000);
-                    String message = plugin.getConfig().getString("messages.cooldown-active", "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds.");
-                    MessageUtil.sendMessage(player, MessageUtil.processPlaceholders(message, Map.of("time", String.valueOf(timeLeft))));
-                    MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
-                    return false;
-                }
-            }
-        }
-
-        // Check global cooldown
-        int globalCooldown = plugin.getConfig().getInt("cooldowns.queue-join", 60);
-
-        // Skip if cooldown is disabled (-1)
-        if (globalCooldown == -1) {
+    public boolean canJoinQueue(Player player) {
+        if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return true;
         }
 
-        if (queueCooldowns.containsKey(uuid)) {
-            long cooldownTime = queueCooldowns.get(uuid);
+        // Check queue join cooldown
+        if (hasQueueJoinCooldown(player)) {
+            long remaining = getQueueJoinCooldownRemaining(player);
 
-            if (now < cooldownTime) {
-                int timeLeft = (int) ((cooldownTime - now) / 1000);
-                String message = plugin.getConfig().getString("messages.cooldown-active", "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds.");
-                MessageUtil.sendMessage(player, MessageUtil.processPlaceholders(message, Map.of("time", String.valueOf(timeLeft))));
-                MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
+            Map<String, String> placeholders = Map.of("time", MessageUtil.formatTime((int) (remaining / 1000)));
+            MessageUtil.sendMessage(player, "cooldown-queue-join", placeholders);
+            return false;
+        }
+
+        // Check post teleport cooldown
+        if (hasPostTeleportCooldown(player)) {
+            long remaining = getPostTeleportCooldownRemaining(player);
+
+            Map<String, String> placeholders = Map.of("time", MessageUtil.formatTime((int) (remaining / 1000)));
+            MessageUtil.sendMessage(player, "cooldown-post-teleport", placeholders);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if player can join specific world queue
+     */
+    public boolean canJoinWorldQueue(Player player, String worldName) {
+        if (player.hasPermission("rtpqueue.bypass.cooldown")) {
+            return true;
+        }
+
+        // Check general cooldowns first
+        if (!canJoinQueue(player)) {
+            return false;
+        }
+
+        // Check per-world cooldown if enabled
+        if (plugin.getConfigManager().getBoolean("cooldowns.per-world-cooldown.enabled")) {
+            if (hasPerWorldCooldown(player, worldName)) {
+                long remaining = getPerWorldCooldownRemaining(player, worldName);
+
+                Map<String, String> placeholders = Map.of("time", MessageUtil.formatTime((int) (remaining / 1000)));
+                MessageUtil.sendMessage(player, "cooldown-active", placeholders);
                 return false;
             }
         }
@@ -83,180 +79,248 @@ public class CooldownManager {
     }
 
     /**
-     * Set a cooldown for a player after joining the queue.
-     *
-     * @param player The player to set cooldown for
-     * @param worldName The world name for per-world cooldown
+     * Check if player can leave queue
      */
-    public void setQueueCooldown(Player player, String worldName) {
-        UUID uuid = player.getUniqueId();
-        long now = System.currentTimeMillis();
-        int globalCooldown = plugin.getConfig().getInt("cooldowns.queue-join", 60);
-
-        // Set global cooldown if not disabled
-        if (globalCooldown != -1) {
-            queueCooldowns.put(uuid, now + (globalCooldown * 1000));
-        }
-
-        // Set per-world cooldown if enabled and not disabled
-        if (plugin.getConfig().getBoolean("cooldowns.per-world-cooldown.enabled", false) && worldName != null) {
-            String key = uuid.toString() + ":" + worldName;
-            int worldCooldown = plugin.getConfig().getInt("cooldowns.per-world-cooldown.worlds." + worldName, 60);
-
-            if (worldCooldown != -1) {
-                worldQueueCooldowns.put(key, now + (worldCooldown * 1000));
-            }
-        }
-    }
-
-    /**
-     * Start pre-teleport countdown for players.
-     *
-     * @param player1 First player to teleport
-     * @param player2 Second player to teleport
-     * @return true if countdown started successfully
-     */
-    public boolean startPreTeleportCountdown(Player player1, Player player2) {
-        int preTeleportTime = plugin.getConfig().getInt("cooldowns.pre-teleport", 5);
-
-        // Get the world name from the queue handler
-        String worldName = plugin.getQueueHandler().getPlayerQueueWorld(player1);
-        if (worldName == null) {
-            worldName = plugin.getWorldManager().getDefaultWorldSettings().getName();
-        }
-
-        // Get the world settings and use its display name in messages
-        WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldName);
-        String worldDisplay = worldSettings != null ? worldSettings.getDisplayName() : worldName;
-
-        // Create list of players
-        final List<Player> playersToTeleport = new ArrayList<>();
-        playersToTeleport.add(player1);
-        playersToTeleport.add(player2);
-
-        // Skip countdown if disabled with -1 (immediate teleport)
-        if (preTeleportTime <= 0) {
-            // Directly teleport players using TeleportHandler's method
-            TeleportHandler.tryTeleport(player1);
+    public boolean canLeaveQueue(Player player) {
+        if (player.hasPermission("rtpqueue.bypass.cooldown")) {
             return true;
         }
 
-        UUID uuid1 = player1.getUniqueId();
-        UUID uuid2 = player2.getUniqueId();
+        if (hasQueueLeaveCooldown(player)) {
+            long remaining = getQueueLeaveCooldownRemaining(player);
 
-        // Mark players as in pre-teleport
-        preTeleportPlayers.put(uuid1, true);
-        preTeleportPlayers.put(uuid2, true);
-
-        // Send initial message (use processPlaceholders to include {time}, {players}, {world})
-        String template = plugin.getConfig().getString("messages.opponent-found", "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds...");
-        Map<String, String> placeholders = Map.of(
-                "time", String.valueOf(preTeleportTime),
-                "players", String.valueOf(playersToTeleport.size()),
-                "player", player1.getName(),
-                "world", worldDisplay
-        );
-        MessageUtil.sendMessage(player1, MessageUtil.processPlaceholders(template, placeholders));
-        MessageUtil.sendMessage(player2, MessageUtil.processPlaceholders(template, placeholders));
-        MessageUtil.playSound(player1, plugin.getConfig().getString("sounds.opponent-found"));
-        MessageUtil.playSound(player2, plugin.getConfig().getString("sounds.opponent-found"));
-
-        // Start countdown task
-        int taskId = new BukkitRunnable() {
-            private int timeLeft = preTeleportTime;
-
-            @Override
-            public void run() {
-                timeLeft--;
-
-                // Check if both players are still online and in pre-teleport
-                if (!player1.isOnline() || !player2.isOnline() ||
-                        !preTeleportPlayers.containsKey(uuid1) || !preTeleportPlayers.containsKey(uuid2)) {
-                    cancel();
-                    preTeleportPlayers.remove(uuid1);
-                    preTeleportPlayers.remove(uuid2);
-                    teleportTasks.remove(uuid1);
-                    teleportTasks.remove(uuid2);
-                    return;
-                }
-
-                // Send countdown message
-                if (timeLeft > 0) {
-                    String countdownMsg = "&c" + timeLeft + "...";
-                    MessageUtil.sendActionBar(player1, countdownMsg);
-                    MessageUtil.sendActionBar(player2, countdownMsg);
-                    MessageUtil.playSound(player1, "BLOCK_NOTE_BLOCK_PLING");
-                    MessageUtil.playSound(player2, "BLOCK_NOTE_BLOCK_PLING");
-                } else {
-                    // Time's up, proceed with teleport
-                    preTeleportPlayers.remove(uuid1);
-                    preTeleportPlayers.remove(uuid2);
-                    teleportTasks.remove(uuid1);
-                    teleportTasks.remove(uuid2);
-
-                    // Trigger teleport through TeleportHandler's public method
-                    TeleportHandler.tryTeleport(player1);
-                    cancel();
-                }
-            }
-        }.runTaskTimer(plugin, 20L, 20L).getTaskId();
-
-        // Store task IDs for cancellation if needed
-        teleportTasks.put(uuid1, taskId);
-        teleportTasks.put(uuid2, taskId);
+            Map<String, String> placeholders = Map.of("time", MessageUtil.formatTime((int) (remaining / 1000)));
+            MessageUtil.sendMessage(player, "cooldown-active", placeholders);
+            return false;
+        }
 
         return true;
     }
 
     /**
-     * Cancel pre-teleport countdown for a player.
-     *
-     * @param player The player to cancel for
+     * Set queue join cooldown
      */
-    public void cancelPreTeleport(Player player) {
-        UUID uuid = player.getUniqueId();
-
-        if (preTeleportPlayers.containsKey(uuid)) {
-            preTeleportPlayers.remove(uuid);
-
-            // Cancel the task if it exists
-            if (teleportTasks.containsKey(uuid)) {
-                plugin.getServer().getScheduler().cancelTask(teleportTasks.get(uuid));
-                teleportTasks.remove(uuid);
-            }
-
-            // Notify player
-            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.move-cancelled",
-                    "&#ff6600⚠ &eTeleport cancelled! You moved during countdown."));
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
+    public void setQueueJoinCooldown(Player player) {
+        int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.queue-join", 60);
+        if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
+            queueJoinCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
         }
     }
 
     /**
-     * Check if a player is in pre-teleport state.
-     *
-     * @param player The player to check
-     * @return true if player is in pre-teleport
+     * Set queue leave cooldown
      */
-    public boolean isInPreTeleport(Player player) {
-        return preTeleportPlayers.containsKey(player.getUniqueId());
+    public void setQueueLeaveCooldown(Player player) {
+        int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.queue-leave", 10);
+        if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
+            queueLeaveCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
+        }
     }
 
     /**
-     * Clear all cooldowns for a player.
-     *
-     * @param player The player to clear cooldowns for
+     * Set post teleport cooldown
      */
-    public void clearCooldowns(Player player) {
-        UUID uuid = player.getUniqueId();
-        queueCooldowns.remove(uuid);
+    public void setPostTeleportCooldown(Player player) {
+        int cooldownSeconds = plugin.getConfigManager().getInt("cooldowns.post-teleport", 120);
+        if (cooldownSeconds > 0 && !player.hasPermission("rtpqueue.bypass.cooldown")) {
+            postTeleportCooldowns.put(player.getUniqueId(), System.currentTimeMillis() + (cooldownSeconds * 1000L));
+        }
+    }
 
-        // Clear any world-specific cooldowns
-        worldQueueCooldowns.entrySet().removeIf(entry -> entry.getKey().startsWith(uuid.toString()));
+    /**
+     * Set per-world cooldown
+     */
+    public void setPerWorldCooldown(Player player, String worldName) {
+        if (!plugin.getConfigManager().getBoolean("cooldowns.per-world-cooldown.enabled")) {
+            return;
+        }
 
-        // Cancel pre-teleport if active
-        if (preTeleportPlayers.containsKey(uuid)) {
-            cancelPreTeleport(player);
+        if (player.hasPermission("rtpqueue.bypass.cooldown")) {
+            return;
+        }
+
+        String configPath = "cooldowns.per-world-cooldown.worlds." + worldName;
+        int cooldownSeconds = plugin.getConfigManager().getInt(configPath, 0);
+
+        if (cooldownSeconds > 0) {
+            perWorldCooldowns.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
+                    .put(worldName, System.currentTimeMillis() + (cooldownSeconds * 1000L));
+        }
+    }
+
+    /**
+     * Check if player has queue join cooldown
+     */
+    public boolean hasQueueJoinCooldown(Player player) {
+        Long cooldownEnd = queueJoinCooldowns.get(player.getUniqueId());
+        if (cooldownEnd == null) {
+            return false;
+        }
+
+        if (System.currentTimeMillis() >= cooldownEnd) {
+            queueJoinCooldowns.remove(player.getUniqueId());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if player has queue leave cooldown
+     */
+    public boolean hasQueueLeaveCooldown(Player player) {
+        Long cooldownEnd = queueLeaveCooldowns.get(player.getUniqueId());
+        if (cooldownEnd == null) {
+            return false;
+        }
+
+        if (System.currentTimeMillis() >= cooldownEnd) {
+            queueLeaveCooldowns.remove(player.getUniqueId());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if player has post teleport cooldown
+     */
+    public boolean hasPostTeleportCooldown(Player player) {
+        Long cooldownEnd = postTeleportCooldowns.get(player.getUniqueId());
+        if (cooldownEnd == null) {
+            return false;
+        }
+
+        if (System.currentTimeMillis() >= cooldownEnd) {
+            postTeleportCooldowns.remove(player.getUniqueId());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if player has per-world cooldown
+     */
+    public boolean hasPerWorldCooldown(Player player, String worldName) {
+        Map<String, Long> playerCooldowns = perWorldCooldowns.get(player.getUniqueId());
+        if (playerCooldowns == null) {
+            return false;
+        }
+
+        Long cooldownEnd = playerCooldowns.get(worldName);
+        if (cooldownEnd == null) {
+            return false;
+        }
+
+        if (System.currentTimeMillis() >= cooldownEnd) {
+            playerCooldowns.remove(worldName);
+            if (playerCooldowns.isEmpty()) {
+                perWorldCooldowns.remove(player.getUniqueId());
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get remaining queue join cooldown in milliseconds
+     */
+    public long getQueueJoinCooldownRemaining(Player player) {
+        Long cooldownEnd = queueJoinCooldowns.get(player.getUniqueId());
+        return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
+    }
+
+    /**
+     * Get remaining queue leave cooldown in milliseconds
+     */
+    public long getQueueLeaveCooldownRemaining(Player player) {
+        Long cooldownEnd = queueLeaveCooldowns.get(player.getUniqueId());
+        return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
+    }
+
+    /**
+     * Get remaining post teleport cooldown in milliseconds
+     */
+    public long getPostTeleportCooldownRemaining(Player player) {
+        Long cooldownEnd = postTeleportCooldowns.get(player.getUniqueId());
+        return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
+    }
+
+    /**
+     * Get remaining per-world cooldown in milliseconds
+     */
+    public long getPerWorldCooldownRemaining(Player player, String worldName) {
+        Map<String, Long> playerCooldowns = perWorldCooldowns.get(player.getUniqueId());
+        if (playerCooldowns == null) {
+            return 0;
+        }
+
+        Long cooldownEnd = playerCooldowns.get(worldName);
+        return cooldownEnd != null ? Math.max(0, cooldownEnd - System.currentTimeMillis()) : 0;
+    }
+
+    /**
+     * Clear all cooldowns for a player
+     */
+    public void clearAllCooldowns(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        queueJoinCooldowns.remove(playerUUID);
+        queueLeaveCooldowns.remove(playerUUID);
+        postTeleportCooldowns.remove(playerUUID);
+        perWorldCooldowns.remove(playerUUID);
+
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Cleared all cooldowns for " + player.getName());
+        }
+    }
+
+    /**
+     * Clear all cooldowns for all players
+     */
+    public void clearAllCooldowns() {
+        queueJoinCooldowns.clear();
+        queueLeaveCooldowns.clear();
+        postTeleportCooldowns.clear();
+        perWorldCooldowns.clear();
+
+        plugin.getLogger().info("Cleared all cooldowns for all players");
+    }
+
+    /**
+     * Handle player disconnect
+     */
+    public void handlePlayerDisconnect(Player player) {
+        // Keep cooldowns when player disconnects for persistence
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Keeping cooldowns for disconnected player: " + player.getName());
+        }
+    }
+
+    /**
+     * Clean up expired cooldowns (maintenance task)
+     */
+    public void cleanupExpiredCooldowns() {
+        long currentTime = System.currentTimeMillis();
+
+        // Clean queue join cooldowns
+        queueJoinCooldowns.entrySet().removeIf(entry -> entry.getValue() <= currentTime);
+
+        // Clean queue leave cooldowns
+        queueLeaveCooldowns.entrySet().removeIf(entry -> entry.getValue() <= currentTime);
+
+        // Clean post teleport cooldowns
+        postTeleportCooldowns.entrySet().removeIf(entry -> entry.getValue() <= currentTime);
+
+        // Clean per-world cooldowns
+        perWorldCooldowns.entrySet().removeIf(playerEntry -> {
+            playerEntry.getValue().entrySet().removeIf(worldEntry -> worldEntry.getValue() <= currentTime);
+            return playerEntry.getValue().isEmpty();
+        });
+
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("Cleaned up expired cooldowns");
         }
     }
 }

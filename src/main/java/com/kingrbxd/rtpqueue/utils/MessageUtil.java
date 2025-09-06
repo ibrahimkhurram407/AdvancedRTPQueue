@@ -2,7 +2,9 @@ package com.kingrbxd.rtpqueue.utils;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 
@@ -13,126 +15,100 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Utility class for handling messages with color codes and sounds.
+ * Complete message utility with all features implemented
  */
 public class MessageUtil {
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
-    // Use concurrent maps for safety if accessed from multiple threads/tasks
-    private static final Map<String, String> cachedColorMessages = new ConcurrentHashMap<>();
+    private static final Map<String, String> messageCache = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> lastMessageTime = new ConcurrentHashMap<>();
-    private static final long MESSAGE_THROTTLE_MS = 50; // Minimum time between messages to a player
+    private static AdvancedRTPQueue plugin;
+    private static String prefix;
 
-    /**
-     * Translate color codes in a message.
-     *
-     * @param message Message to translate
-     * @return Translated message
-     */
+    private static final long MESSAGE_THROTTLE_MS = 100;
+
+    public static void initialize(AdvancedRTPQueue pluginInstance) {
+        plugin = pluginInstance;
+        loadPrefix();
+    }
+
+    private static void loadPrefix() {
+        if (plugin != null) {
+            prefix = colorize(plugin.getConfig().getString("ui.prefix", "&8[&6RTP Queue&8] &r"));
+        }
+    }
+
+    public static void clearCache() {
+        messageCache.clear();
+        loadPrefix();
+    }
+
     public static String colorize(String message) {
-        if (message == null) {
+        if (message == null || message.isEmpty()) {
             return "";
         }
 
-        // Check cache first
-        String cached = cachedColorMessages.get(message);
-        if (cached != null) return cached;
+        String cached = messageCache.get(message);
+        if (cached != null) {
+            return cached;
+        }
 
-        String original = message;
+        String result = message;
 
-        // Process hex colors (&#RRGGBB) if supported
-        if (isHexSupported()) {
-            Matcher matcher = HEX_PATTERN.matcher(message);
+        // Process hex colors
+        if (supportsHexColors()) {
+            Matcher matcher = HEX_PATTERN.matcher(result);
             StringBuffer sb = new StringBuffer();
 
             while (matcher.find()) {
                 String hexColor = matcher.group(1);
-                matcher.appendReplacement(sb, ChatColor.of("#" + hexColor).toString());
+                try {
+                    matcher.appendReplacement(sb, ChatColor.of("#" + hexColor).toString());
+                } catch (Exception e) {
+                    matcher.appendReplacement(sb, "&" + hexColor.charAt(0));
+                }
             }
 
             matcher.appendTail(sb);
-            message = sb.toString();
+            result = sb.toString();
         }
 
         // Process standard color codes
-        String colorized = ChatColor.translateAlternateColorCodes('&', message);
+        result = ChatColor.translateAlternateColorCodes('&', result);
 
-        // Cache based on original input
-        cachedColorMessages.put(original, colorized);
-
-        return colorized;
+        messageCache.put(message, result);
+        return result;
     }
 
-    /**
-     * Replace placeholders in a template string with the provided map, then colorize the result.
-     * Supports tokens in the form {key} and %key% for convenience.
-     *
-     * Example:
-     *   template = "Teleporting to {world} in {time}s..."
-     *   placeholders = {"world":"&6Overworld", "time":"5"}
-     *   => returns colorized string with the substituted values.
-     *
-     * @param template the message template (may contain {key} or %key% tokens)
-     * @param placeholders map of tokens -> replacement values (null-safe)
-     * @return processed and colorized string
-     */
-    public static String processPlaceholders(String template, Map<String, String> placeholders) {
-        if (template == null || template.isEmpty()) return "";
-        String result = template;
+    public static String processPlaceholders(String message, Map<String, String> placeholders) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
 
-        if (placeholders != null && !placeholders.isEmpty()) {
-            for (Map.Entry<String, String> e : placeholders.entrySet()) {
-                String key = e.getKey();
-                String val = e.getValue() == null ? "" : e.getValue();
+        String result = message;
 
-                // Replace {key}
-                result = result.replace("{" + key + "}", val);
-                // Replace %key% (common placeholder style)
-                result = result.replace("%" + key + "%", val);
+        if (placeholders != null) {
+            for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue() != null ? entry.getValue() : "";
+
+                result = result.replace("{" + key + "}", value);
+                result = result.replace("%" + key + "%", value);
             }
         }
 
-        // Finally colorize
         return colorize(result);
     }
 
-    /**
-     * Clear all cached colorized messages.
-     * Useful when reloading config to ensure messages reflect the new config.
-     */
-    public static void clearCachedMessages() {
-        cachedColorMessages.clear();
+    public static void sendMessage(Player player, String messageKey) {
+        sendMessage(player, messageKey, null);
     }
 
-    private static boolean isHexSupported() {
-        try {
-            ChatColor.class.getMethod("of", String.class);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
+    public static void sendMessage(Player player, String messageKey, Map<String, String> placeholders) {
+        if (player == null || messageKey == null) {
+            return;
         }
-    }
 
-    /**
-     * Send a message to a CommandSender (console or player) with color codes.
-     *
-     * @param sender CommandSender
-     * @param message Message to send
-     */
-    public static void sendMessage(org.bukkit.command.CommandSender sender, String message) {
-        if (sender == null || message == null || message.isEmpty()) return;
-        sender.sendMessage(colorize(message));
-    }
-
-    /**
-     * Send a throttled, colorized message to a Player.
-     *
-     * @param player Player to send message to
-     * @param message Message to send
-     */
-    public static void sendMessage(Player player, String message) {
-        if (player == null || message == null || message.isEmpty()) return;
-
-        // Throttle messages to prevent spam
+        // Check throttling
         UUID playerUUID = player.getUniqueId();
         long currentTime = System.currentTimeMillis();
         Long lastTime = lastMessageTime.get(playerUUID);
@@ -143,71 +119,210 @@ public class MessageUtil {
 
         lastMessageTime.put(playerUUID, currentTime);
 
-        player.sendMessage(colorize(message));
-    }
-
-    /**
-     * Send an action bar message to a player.
-     * Uses Bungee TextComponent via spigot if available; falls back to normal chat.
-     *
-     * @param player Player
-     * @param message Message
-     */
-    public static void sendActionBar(Player player, String message) {
-        if (player == null || message == null || message.isEmpty()) return;
-
-        try {
-            // Use spigot API to send action bar
-            player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, new TextComponent(colorize(message)));
-        } catch (NoSuchMethodError | NoClassDefFoundError e) {
-            // Fallback: send as normal message
-            player.sendMessage(colorize(message));
-        } catch (Throwable t) {
-            player.sendMessage(colorize(message));
-        }
-    }
-
-    /**
-     * Play a sound for a player.
-     *
-     * @param player Player to play sound for
-     * @param soundName Name of the sound to play (case-sensitive enum name preferred)
-     */
-    public static void playSound(Player player, String soundName) {
-        if (player == null || soundName == null || soundName.isEmpty()) {
+        String message = getMessage(messageKey);
+        if (message.isEmpty()) {
             return;
         }
 
+        // Process placeholders
+        message = processPlaceholders(message, placeholders);
+
+        // Add prefix if not disabled for this message type
+        if (shouldAddPrefix(messageKey)) {
+            message = prefix + message;
+        }
+
+        player.sendMessage(message);
+    }
+
+    public static void sendActionBar(Player player, String messageKey) {
+        sendActionBar(player, messageKey, null);
+    }
+
+    public static void sendActionBar(Player player, String messageKey, Map<String, String> placeholders) {
+        if (player == null || messageKey == null) {
+            return;
+        }
+
+        String message = getConfigMessage(messageKey);
+        if (message.isEmpty()) {
+            return;
+        }
+
+        message = processPlaceholders(message, placeholders);
+
         try {
-            Sound sound = Sound.valueOf(soundName);
-            player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
+            player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(message));
+        } catch (Exception e) {
+            // Fallback to chat message
+            player.sendMessage(message);
+        }
+    }
+
+    public static void sendTitle(Player player, String titleKey, String subtitleKey) {
+        sendTitle(player, titleKey, subtitleKey, null);
+    }
+
+    public static void sendTitle(Player player, String titleKey, String subtitleKey, Map<String, String> placeholders) {
+        if (player == null) {
+            return;
+        }
+
+        String title = "";
+        String subtitle = "";
+
+        if (titleKey != null) {
+            String configPath = "titles." + titleKey + ".title";
+            title = processPlaceholders(plugin.getConfig().getString(configPath, ""), placeholders);
+        }
+
+        if (subtitleKey != null) {
+            String configPath = "titles." + subtitleKey + ".subtitle";
+            subtitle = processPlaceholders(plugin.getConfig().getString(configPath, ""), placeholders);
+        }
+
+        // Get title timing from config
+        String timingPath = "titles." + titleKey + ".";
+        int fadeIn = plugin.getConfig().getInt(timingPath + "fade-in", 10);
+        int stay = plugin.getConfig().getInt(timingPath + "stay", 40);
+        int fadeOut = plugin.getConfig().getInt(timingPath + "fade-out", 10);
+
+        player.sendTitle(title, subtitle, fadeIn, stay, fadeOut);
+    }
+
+    public static void playSound(Player player, String soundKey) {
+        if (player == null || soundKey == null || !plugin.getConfig().getBoolean("sounds.enabled", true)) {
+            return;
+        }
+
+        String configPath = "sounds." + soundKey + ".";
+        String soundName = plugin.getConfig().getString(configPath + "sound", "");
+
+        if (soundName.isEmpty()) {
+            return;
+        }
+
+        double volume = plugin.getConfig().getDouble(configPath + "volume", 1.0);
+        double pitch = plugin.getConfig().getDouble(configPath + "pitch", 1.0);
+
+        try {
+            Sound sound = Sound.valueOf(soundName.toUpperCase().replace(".", "_"));
+            player.playSound(player.getLocation(), sound, (float) volume, (float) pitch);
         } catch (IllegalArgumentException e) {
-            // Try uppercase replacement (some config values might be lowercase)
+            // Try with exact name
             try {
-                Sound sound = Sound.valueOf(soundName.toUpperCase());
-                player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
+                Sound sound = Sound.valueOf(soundName);
+                player.playSound(player.getLocation(), sound, (float) volume, (float) pitch);
             } catch (IllegalArgumentException ex) {
-                // Sound doesn't exist - log with debug only
-                AdvancedRTPQueue plugin = AdvancedRTPQueue.getInstance();
-                if (plugin != null && plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                     plugin.getLogger().warning("Invalid sound: " + soundName);
                 }
-            }
-        } catch (NoSuchMethodError | NoClassDefFoundError ignored) {
-            // Older server doesn't have sounds or API differs; ignore silently
-        } catch (Exception ex) {
-            AdvancedRTPQueue plugin = AdvancedRTPQueue.getInstance();
-            if (plugin != null && plugin.getConfig().getBoolean("debug", false)) {
-                plugin.getLogger().warning("Error playing sound '" + soundName + "': " + ex.getMessage());
             }
         }
     }
 
-    /**
-     * Send a title to a player (wrapper).
-     */
-    public static void sendTitle(Player player, String title, String subtitle) {
-        if (player == null) return;
-        player.sendTitle(title != null ? colorize(title) : "", subtitle != null ? colorize(subtitle) : "", 10, 70, 20);
+    public static void spawnParticles(Player player, String particleKey) {
+        if (player == null || particleKey == null || !plugin.getConfig().getBoolean("particles.enabled", true)) {
+            return;
+        }
+
+        String configPath = "particles." + particleKey + ".";
+        String particleName = plugin.getConfig().getString(configPath + "particle", "");
+
+        if (particleName.isEmpty()) {
+            return;
+        }
+
+        int count = plugin.getConfig().getInt(configPath + "count", 10);
+        double spread = plugin.getConfig().getDouble(configPath + "spread", 1.0);
+
+        try {
+            Particle particle = Particle.valueOf(particleName.toUpperCase());
+            player.getWorld().spawnParticle(particle, player.getLocation(), count, spread, spread, spread);
+        } catch (IllegalArgumentException e) {
+            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+                plugin.getLogger().warning("Invalid particle: " + particleName);
+            }
+        }
+    }
+
+    private static String getMessage(String key) {
+        if (plugin == null) {
+            return "";
+        }
+
+        return plugin.getConfig().getString("messages." + key, "");
+    }
+
+    private static String getConfigMessage(String key) {
+        if (plugin == null) {
+            return "";
+        }
+
+        return plugin.getConfig().getString("ui.action-bar." + key, "");
+    }
+
+    private static boolean shouldAddPrefix(String messageKey) {
+        if (plugin == null) {
+            return true;
+        }
+
+        return !plugin.getConfig().getStringList("ui.no-prefix-messages").contains(messageKey);
+    }
+
+    private static boolean supportsHexColors() {
+        try {
+            ChatColor.class.getMethod("of", String.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    public static void clearPlayerFromCache(UUID playerUUID) {
+        lastMessageTime.remove(playerUUID);
+    }
+
+    public static String formatTime(int seconds) {
+        if (seconds <= 0) {
+            return "0s";
+        }
+
+        int minutes = seconds / 60;
+        int remainingSeconds = seconds % 60;
+
+        if (minutes > 0) {
+            return minutes + "m " + remainingSeconds + "s";
+        } else {
+            return remainingSeconds + "s";
+        }
+    }
+
+    public static String createProgressBar(int current, int max, int length) {
+        if (max <= 0) {
+            return "";
+        }
+
+        double percentage = (double) current / max;
+        int completed = (int) (percentage * length);
+
+        String completedColor = plugin.getConfig().getString("ui.progress-bar.completed-color", "&a");
+        String remainingColor = plugin.getConfig().getString("ui.progress-bar.remaining-color", "&7");
+        String character = plugin.getConfig().getString("ui.progress-bar.character", "▌");
+
+        StringBuilder bar = new StringBuilder();
+        bar.append(colorize(completedColor));
+
+        for (int i = 0; i < completed; i++) {
+            bar.append(character);
+        }
+
+        bar.append(colorize(remainingColor));
+
+        for (int i = completed; i < length; i++) {
+            bar.append(character);
+        }
+
+        return bar.toString();
     }
 }
