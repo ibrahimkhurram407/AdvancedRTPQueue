@@ -52,8 +52,7 @@ public class CooldownManager {
                 if (now < cooldownTime) {
                     int timeLeft = (int) ((cooldownTime - now) / 1000);
                     String message = plugin.getConfig().getString("messages.cooldown-active", "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds.");
-                    message = message.replace("{time}", String.valueOf(timeLeft));
-                    MessageUtil.sendMessage(player, message);
+                    MessageUtil.sendMessage(player, MessageUtil.processPlaceholders(message, Map.of("time", String.valueOf(timeLeft))));
                     MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
                     return false;
                 }
@@ -74,8 +73,7 @@ public class CooldownManager {
             if (now < cooldownTime) {
                 int timeLeft = (int) ((cooldownTime - now) / 1000);
                 String message = plugin.getConfig().getString("messages.cooldown-active", "&#ff9900⏱ &eOn cooldown. Try again in {time} seconds.");
-                message = message.replace("{time}", String.valueOf(timeLeft));
-                MessageUtil.sendMessage(player, message);
+                MessageUtil.sendMessage(player, MessageUtil.processPlaceholders(message, Map.of("time", String.valueOf(timeLeft))));
                 MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
                 return false;
             }
@@ -127,15 +125,16 @@ public class CooldownManager {
             worldName = plugin.getWorldManager().getDefaultWorldSettings().getName();
         }
 
-        // Get the world settings
+        // Get the world settings and use its display name in messages
         WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldName);
+        String worldDisplay = worldSettings != null ? worldSettings.getDisplayName() : worldName;
 
         // Create list of players
         final List<Player> playersToTeleport = new ArrayList<>();
         playersToTeleport.add(player1);
         playersToTeleport.add(player2);
 
-        // Skip countdown if disabled with -1
+        // Skip countdown if disabled with -1 (immediate teleport)
         if (preTeleportTime <= 0) {
             // Directly teleport players using TeleportHandler's method
             TeleportHandler.tryTeleport(player1);
@@ -149,11 +148,16 @@ public class CooldownManager {
         preTeleportPlayers.put(uuid1, true);
         preTeleportPlayers.put(uuid2, true);
 
-        // Send initial message
-        String message = plugin.getConfig().getString("messages.opponent-found", "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds...");
-        message = message.replace("{time}", String.valueOf(preTeleportTime));
-        MessageUtil.sendMessage(player1, message);
-        MessageUtil.sendMessage(player2, message);
+        // Send initial message (use processPlaceholders to include {time}, {players}, {world})
+        String template = plugin.getConfig().getString("messages.opponent-found", "&#ff0000⚔ &cMatch found! Teleporting in {time} seconds...");
+        Map<String, String> placeholders = Map.of(
+                "time", String.valueOf(preTeleportTime),
+                "players", String.valueOf(playersToTeleport.size()),
+                "player", player1.getName(),
+                "world", worldDisplay
+        );
+        MessageUtil.sendMessage(player1, MessageUtil.processPlaceholders(template, placeholders));
+        MessageUtil.sendMessage(player2, MessageUtil.processPlaceholders(template, placeholders));
         MessageUtil.playSound(player1, plugin.getConfig().getString("sounds.opponent-found"));
         MessageUtil.playSound(player2, plugin.getConfig().getString("sounds.opponent-found"));
 

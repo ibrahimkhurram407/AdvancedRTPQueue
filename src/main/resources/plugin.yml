@@ -2,7 +2,7 @@ name: AdvancedRTPQueue
 version: 2.2
 main: com.kingrbxd.rtpqueue.AdvancedRTPQueue
 author: KingRBxD
-description: A highly optimized Random Teleportation Queue plugin with sound effects and bStats.
+description: A highly optimized and most popular Random Teleportation Queue plugin.
 api-version: 1.19
 softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI]
 

@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.kingrbxd</groupId>
-    <artifactId>advancedrtpqueue</artifactId>
+    <artifactId>AdvancedRTPQueue</artifactId>
     <version>2.2</version>
     <packaging>jar</packaging>
 

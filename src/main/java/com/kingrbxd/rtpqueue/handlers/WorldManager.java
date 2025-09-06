@@ -1,6 +1,7 @@
 package com.kingrbxd.rtpqueue.handlers;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
+import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
@@ -61,17 +62,20 @@ public class WorldManager {
 
             if (worldsSection != null) {
                 for (String key : worldsSection.getKeys(false)) {
-                    String worldName = worldsSection.getString(key + ".name");
-                    String displayName = worldsSection.getString(key + ".display-name", worldName);
-                    String permission = worldsSection.getString(key + ".permission");
+                    ConfigurationSection sec = worldsSection.getConfigurationSection(key);
+                    if (sec == null) continue;
 
-                    int worldMinX = worldsSection.getInt(key + ".min-x", minX);
-                    int worldMaxX = worldsSection.getInt(key + ".max-x", maxX);
-                    int worldMinZ = worldsSection.getInt(key + ".min-z", minZ);
-                    int worldMaxZ = worldsSection.getInt(key + ".max-z", maxZ);
+                    String worldName = sec.getString("name", key);
+                    String displayName = sec.getString("display-name", worldName);
+                    String permission = sec.getString("permission", null);
 
-                    boolean worldSafeTeleport = worldsSection.getBoolean(key + ".safe-teleport", safeTeleport);
-                    int worldMaxAttempts = worldsSection.getInt(key + ".max-teleport-attempts", maxAttempts);
+                    int worldMinX = sec.getInt("min-x", minX);
+                    int worldMaxX = sec.getInt("max-x", maxX);
+                    int worldMinZ = sec.getInt("min-z", minZ);
+                    int worldMaxZ = sec.getInt("max-z", maxZ);
+
+                    boolean worldSafeTeleport = sec.getBoolean("safe-teleport", safeTeleport);
+                    int worldMaxAttempts = sec.getInt("max-teleport-attempts", maxAttempts);
 
                     WorldSettings settings = new WorldSettings(
                             worldName,
@@ -89,6 +93,17 @@ public class WorldManager {
                 }
             }
         }
+
+        // Also allow a simple map-style config teleport.world-display-names.<world> = "<display>"
+        ConfigurationSection mapStyle = plugin.getConfig().getConfigurationSection("teleport.world-display-names");
+        if (mapStyle != null) {
+            for (String worldName : mapStyle.getKeys(false)) {
+                String display = mapStyle.getString(worldName, worldName);
+                // If not present already, add with reasonable defaults
+                worldSettingsMap.putIfAbsent(worldName,
+                        new WorldSettings(worldName, display, null, minX, maxX, minZ, maxZ, safeTeleport, maxAttempts));
+            }
+        }
     }
 
     /**
@@ -99,6 +114,25 @@ public class WorldManager {
      */
     public WorldSettings getWorldSettings(String worldName) {
         return worldSettingsMap.getOrDefault(worldName, defaultWorldSettings);
+    }
+
+    /**
+     * Convenience method used by other code (like PlaceholderManager) to get the colorized display name.
+     *
+     * @param worldName internal world name
+     * @return colorized display name (falls back to raw world name or "none")
+     */
+    public String getDisplayName(String worldName) {
+        if (worldName == null) return MessageUtil.colorize("none");
+
+        WorldSettings s = getWorldSettings(worldName);
+        if (s != null) {
+            return s.getDisplayName();
+        }
+
+        // fallback to config key or raw name
+        String fallback = plugin.getConfig().getString("teleport.world-display-names." + worldName, worldName);
+        return MessageUtil.colorize(fallback == null ? "none" : fallback);
     }
 
     /**
@@ -172,7 +206,7 @@ public class WorldManager {
         }
 
         public String getDisplayName() {
-            return displayName;
+            return MessageUtil.colorize(displayName == null ? name : displayName);
         }
 
         public String getPermission() {

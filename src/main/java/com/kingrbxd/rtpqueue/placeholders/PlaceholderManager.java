@@ -2,6 +2,7 @@ package com.kingrbxd.rtpqueue.placeholders;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import com.kingrbxd.rtpqueue.handlers.QueueHandler;
+import com.kingrbxd.rtpqueue.utils.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -13,6 +14,7 @@ import java.util.Map;
 public class PlaceholderManager {
     private final AdvancedRTPQueue plugin;
     private boolean placeholderAPIEnabled = false;
+    private RTPQueueExpansion expansion; // single expansion instance
 
     public PlaceholderManager(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
@@ -21,29 +23,42 @@ public class PlaceholderManager {
 
     /**
      * Set up PlaceholderAPI integration if available.
+     * Safe to call multiple times (will unregister previous expansion before re-registering).
      */
-    private void setupPlaceholderAPI() {
+    public void setupPlaceholderAPI() {
+        // If already set up, unregister first (safe for reload)
+        if (placeholderAPIEnabled && expansion != null) {
+            try {
+                expansion.unregister();
+            } catch (Throwable ignored) {}
+            placeholderAPIEnabled = false;
+            expansion = null;
+        }
+
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
-                if (new RTPQueueExpansion(plugin).canRegister()) {
-                    if (new RTPQueueExpansion(plugin).register()) {
-                        placeholderAPIEnabled = true;
-                        plugin.getLogger().info("Successfully hooked into PlaceholderAPI!");
-                        plugin.getLogger().info("Available placeholders:");
-                        plugin.getLogger().info("  %rtpqueue_in_queue% - Whether player is in queue");
-                        plugin.getLogger().info("  %rtpqueue_current_world% - Current queue world");
-                        plugin.getLogger().info("  %rtpqueue_total_players% - Total players in all queues");
-                        plugin.getLogger().info("  %rtpqueue_required_players% - Required players to teleport");
-                        plugin.getLogger().info("  %rtpqueue_remaining_needed% - Players needed for current queue");
-                        plugin.getLogger().info("  %rtpqueue_world_count_<worldname>% - Players in specific world queue");
-                        plugin.getLogger().info("  %rtpqueue_world_status_<worldname>% - Status of specific world queue");
-                    } else {
-                        plugin.getLogger().warning("Failed to register PlaceholderAPI expansion.");
-                    }
+                expansion = new RTPQueueExpansion(plugin);
+                if (expansion.canRegister() && expansion.register()) {
+                    placeholderAPIEnabled = true;
+                    plugin.getLogger().info("Successfully hooked into PlaceholderAPI!");
+                    plugin.getLogger().info("Available placeholders:");
+                    plugin.getLogger().info("  %rtpqueue_in_queue% - Whether player is in queue");
+                    plugin.getLogger().info("  %rtpqueue_current_world% - Current queue world (display-name)");
+                    plugin.getLogger().info("  %rtpqueue_total_players% - Total players in all queues");
+                    plugin.getLogger().info("  %rtpqueue_required_players% - Required players to teleport");
+                    plugin.getLogger().info("  %rtpqueue_remaining_needed% - Players needed for current queue");
+                    plugin.getLogger().info("  %rtpqueue_world_count_<worldname>% - Players in specific world queue");
+                    plugin.getLogger().info("  %rtpqueue_world_status_<worldname>% - Status of specific world queue");
+                } else {
+                    plugin.getLogger().warning("Failed to register PlaceholderAPI expansion.");
+                    placeholderAPIEnabled = false;
+                    expansion = null;
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 plugin.getLogger().warning("Failed to hook into PlaceholderAPI: " + e.getMessage());
                 plugin.getLogger().warning("Placeholders will not be available.");
+                placeholderAPIEnabled = false;
+                expansion = null;
             }
         } else {
             plugin.getLogger().info("PlaceholderAPI not found. Placeholders will not be available.");
@@ -51,16 +66,23 @@ public class PlaceholderManager {
     }
 
     /**
-     * Check if PlaceholderAPI is enabled.
-     *
-     * @return True if PlaceholderAPI is enabled
+     * Unregister the expansion (called on plugin disable/reload).
      */
-    public boolean isPlaceholderAPIEnabled() {
-        return placeholderAPIEnabled;
+    public void unregister() {
+        if (!placeholderAPIEnabled || expansion == null) return;
+        try {
+            expansion.unregister();
+        } catch (Throwable t) {
+            plugin.getLogger().warning("Failed to unregister PlaceholderAPI expansion: " + t.getMessage());
+        } finally {
+            placeholderAPIEnabled = false;
+            expansion = null;
+        }
     }
 
     /**
      * Custom expansion for PlaceholderAPI.
+     * Fully-qualified parent class reference used to avoid import issues when PAPI isn't present at compile-time.
      */
     public class RTPQueueExpansion extends me.clip.placeholderapi.expansion.PlaceholderExpansion {
         private final AdvancedRTPQueue plugin;
@@ -76,7 +98,14 @@ public class PlaceholderManager {
 
         @Override
         public String getAuthor() {
-            return plugin.getDescription().getAuthors().toString();
+            // Return a clean comma-separated list of authors
+            try {
+                java.util.List<String> authors = plugin.getDescription().getAuthors();
+                if (authors == null || authors.isEmpty()) return "unknown";
+                return String.join(", ", authors);
+            } catch (Throwable t) {
+                return "unknown";
+            }
         }
 
         @Override
@@ -101,6 +130,7 @@ public class PlaceholderManager {
             }
 
             QueueHandler queueHandler = plugin.getQueueHandler();
+            if (queueHandler == null) return "";
 
             // Basic player status
             // %rtpqueue_in_queue%
@@ -108,10 +138,19 @@ public class PlaceholderManager {
                 return queueHandler.isInQueue(player) ? "true" : "false";
             }
 
-            // %rtpqueue_current_world%
+            // %rtpqueue_current_world% -> use world display name from WorldManager (colorized)
             if (identifier.equals("current_world")) {
                 String world = queueHandler.getPlayerQueueWorld(player);
-                return world != null ? world : "none";
+                if (world == null) return "none";
+                // Use WorldManager.getDisplayName if available, otherwise return raw name
+                try {
+                    String display = plugin.getWorldManager() != null
+                            ? plugin.getWorldManager().getDisplayName(world)
+                            : world;
+                    return display == null ? "none" : MessageUtil.colorize(display);
+                } catch (Throwable ignored) {
+                    return world;
+                }
             }
 
             // Global queue info
