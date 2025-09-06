@@ -1,10 +1,11 @@
+# =====================================
 # AdvancedRTPQueue v3.0 Configuration
 # =====================================
 # Professional RTP Queue system with safe teleportation
-# NOTE: per-world cooldowns use BUKKIT world names (see cooldowns.per-world-cooldown.worlds).
 
 plugin:
   debug: false
+  prefix: "&6[AdvancedRTPQueue]&r "   # Prefix added to messages (supports color codes). Empty to disable.
 
 queue:
   required-players: 2
@@ -63,7 +64,6 @@ teleport:
     enabled: true
     worlds:
       nether:
-        # config key: "nether" (used in commands and tab). bukkit name below:
         name: "world_nether"
         display-name: "&cThe Nether"
         permission: "rtpqueue.world.nether"
@@ -136,7 +136,8 @@ messages:
   already-in-queue: "&e⚠ You're already in the queue!"
   not-in-queue: "&c⚠ You're not in the queue."
   match-found: "&a🎯 Match found! Teleporting in &c{time} &aseconds..."
-  teleporting: "&6🚀 Teleporting to &e{world}&6..."
+  teleporting: "&6🚀 Teleporting to &e{world}&6..."   # reused to tell players they are currently teleporting
+  cannot-join-while-teleporting: "&c⚠ You cannot join a queue while teleporting!"
   teleported: "&a✅ Successfully teleported!"
   no-permission: "&c⛔ No permission."
   no-permission-world: "&c⛔ No permission for world &e{world}&c."
@@ -204,6 +205,7 @@ sounds:
 
 particles:
   enabled: true
+  visible-range: 64          # players within this radius will see particles (used for Player-based spawn fallback)
   teleport-start:
     particle: "PORTAL"
     count: 50

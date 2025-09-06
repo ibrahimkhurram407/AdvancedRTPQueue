@@ -14,7 +14,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * RTPQueueCommand - updated force behavior to add players into queues (default or specified).
+ * RTPQueueCommand - handles /rtpqueue commands and tab-completion.
+ *
+ * This implementation:
+ *  - blocks joining while player has an active teleport session
+ *  - supports joining default world, named worlds (display-name resolution)
+ *  - supports admin force: /rtpqueue force <player> [world]
  */
 public class RTPQueueCommand implements CommandExecutor, TabCompleter {
     private final AdvancedRTPQueue plugin;
@@ -28,7 +33,6 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
         boolean isPlayerSender = sender instanceof Player;
         Player playerSender = isPlayerSender ? (Player) sender : null;
 
-        // If no args -> must be a player (join default world)
         if (args.length == 0) {
             if (!isPlayerSender) {
                 sender.sendMessage("This command must be run by a player to join the queue. Use console for admin actions.");
@@ -85,7 +89,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
                     }
                 } catch (Exception e) {
                     sender.sendMessage("Reload failed: " + e.getMessage());
-                    if (plugin.getConfigManager().getBoolean("plugin.debug")) e.printStackTrace();
+                    if (plugin.getConfig().getBoolean("plugin.debug")) e.printStackTrace();
                 }
                 return true;
 
@@ -109,7 +113,6 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
                     else sender.sendMessage("You don't have permission to run that command.");
                     return true;
                 }
-                // /rtpqueue force <player> [world-display-or-key]
                 if (args.length < 2) {
                     if (isPlayerSender) MessageUtil.sendMessage(playerSender, "invalid-command");
                     else sender.sendMessage("Usage: /rtpqueue force <player> [world]");
@@ -129,13 +132,29 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // --- existing methods (join/leave/reload) unchanged except small calls to cooldown/per-world where appropriate ---
     private boolean handleJoinQueue(Player player, String worldInput) {
-        if (!plugin.getCooldownManager().canJoinQueue(player)) return true;
+        if (player == null) return true;
+
+        // Block joins when the player is currently in a teleport countdown / session
+        if (plugin.getTeleportManager().hasActiveSession(player)) {
+            if (plugin.getConfig().contains("messages.cannot-join-while-teleporting")) {
+                MessageUtil.sendMessage(player, "cannot-join-while-teleporting");
+            } else {
+                String sessionWorld = plugin.getTeleportManager().getActiveSessionWorld(player);
+                Map<String, String> ph = new HashMap<String, String>();
+                ph.put("world", sessionWorld != null ? plugin.getWorldManager().getDisplayName(sessionWorld) : "");
+                MessageUtil.sendMessage(player, "teleporting", ph);
+            }
+            return true;
+        }
+
+        if (!plugin.getCooldownManager().canJoinQueue(player)) {
+            return true; // cooldown manager already sends message
+        }
 
         String worldKey = worldInput;
         if (worldKey == null) {
-            worldKey = plugin.getConfigManager().getString("teleport.default-world", "world");
+            worldKey = plugin.getConfig().getString("teleport.default-world", "world");
         } else {
             String resolved = plugin.getWorldManager().resolveKeyByDisplayName(worldKey);
             if (resolved != null) worldKey = resolved;
@@ -143,12 +162,16 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
 
         WorldManager wm = plugin.getWorldManager();
         if (!wm.isValidWorld(worldKey)) {
-            MessageUtil.sendMessage(player, "invalid-world", Collections.singletonMap("world", worldKey));
+            Map<String, String> ph = new HashMap<String, String>();
+            ph.put("world", worldKey);
+            MessageUtil.sendMessage(player, "invalid-world", ph);
             return true;
         }
 
         if (!hasWorldPermission(player, worldKey)) {
-            MessageUtil.sendMessage(player, "no-permission-world", Collections.singletonMap("world", wm.getDisplayName(worldKey)));
+            Map<String, String> ph = new HashMap<String, String>();
+            ph.put("world", wm.getDisplayName(worldKey));
+            MessageUtil.sendMessage(player, "no-permission-world", ph);
             return true;
         }
 
@@ -162,7 +185,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
                 MessageUtil.sendMessage(player, "already-in-queue");
                 return true;
             }
-            if (plugin.getConfigManager().getBoolean("queue.allow-world-switching", true)) {
+            if (plugin.getConfig().getBoolean("queue.allow-world-switching", true)) {
                 plugin.getQueueHandler().removeFromQueue(player);
                 if (plugin.getQueueHandler().addToQueue(player, worldKey)) {
                     plugin.getCooldownManager().setQueueJoinCooldown(player);
@@ -183,6 +206,8 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean handleLeaveQueue(Player player) {
+        if (player == null) return true;
+
         if (plugin.getTeleportManager().hasActiveSession(player)) {
             plugin.getTeleportManager().cancelPlayerSession(player, "cancelled");
             MessageUtil.sendMessage(player, "cancelled-moved");
@@ -205,6 +230,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean handleReload(Player player) {
+        if (player == null) return true;
         if (!player.hasPermission("rtpqueue.admin")) {
             MessageUtil.sendMessage(player, "no-permission");
             return true;
@@ -214,35 +240,39 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             if (plugin.reloadPlugin()) {
                 MessageUtil.sendMessage(player, "reload-success");
             } else {
-                MessageUtil.sendMessage(player, "reload-failed", Collections.singletonMap("error", "Unknown error"));
+                Map<String, String> ph = new HashMap<String, String>();
+                ph.put("error", "Unknown error");
+                MessageUtil.sendMessage(player, "reload-failed", ph);
             }
         } catch (Exception e) {
-            MessageUtil.sendMessage(player, "reload-failed", Collections.singletonMap("error", e.getMessage()));
-            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-                e.printStackTrace();
-            }
+            Map<String, String> ph = new HashMap<String, String>();
+            ph.put("error", e.getMessage());
+            MessageUtil.sendMessage(player, "reload-failed", ph);
+            if (plugin.getConfig().getBoolean("plugin.debug")) e.printStackTrace();
         }
         return true;
     }
 
     /**
-     * New force logic: add target to queue (default or specified world).
+     * Force logic: add target to queue (default or specified world).
      */
     private boolean handleForce(CommandSender sender, String targetName, String worldInput) {
         Player target = Bukkit.getPlayerExact(targetName);
         if (target == null || !target.isOnline()) {
             if (sender instanceof Player) {
-                MessageUtil.sendMessage((Player) sender, "invalid-player", Collections.singletonMap("player", targetName));
+                Map<String, String> ph = new HashMap<String, String>();
+                ph.put("player", targetName);
+                MessageUtil.sendMessage((Player) sender, "invalid-player", ph);
             } else {
                 sender.sendMessage("Player '" + targetName + "' is not online.");
             }
             return true;
         }
 
-        // determine world key (resolve display name or use default)
+        // determine world key
         String worldKey;
         if (worldInput == null) {
-            worldKey = plugin.getConfigManager().getString("teleport.default-world", "world");
+            worldKey = plugin.getConfig().getString("teleport.default-world", "world");
         } else {
             String resolved = plugin.getWorldManager().resolveKeyByDisplayName(worldInput);
             worldKey = resolved != null ? resolved : worldInput;
@@ -251,7 +281,9 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
         WorldManager wm = plugin.getWorldManager();
         if (!wm.isValidWorld(worldKey)) {
             if (sender instanceof Player) {
-                MessageUtil.sendMessage((Player) sender, "invalid-world", Collections.singletonMap("world", worldInput != null ? worldInput : worldKey));
+                Map<String, String> ph = new HashMap<String, String>();
+                ph.put("world", worldInput != null ? worldInput : worldKey);
+                MessageUtil.sendMessage((Player) sender, "invalid-world", ph);
             } else {
                 sender.sendMessage("Invalid world: " + (worldInput != null ? worldInput : worldKey));
             }
@@ -263,73 +295,58 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             plugin.getTeleportManager().cancelPlayerSession(target, "force");
         }
 
-        // If target already in queue
+        // If in queue already
         if (plugin.getQueueHandler().isInQueue(target)) {
             String current = plugin.getQueueHandler().getPlayerQueueWorld(target);
             if (worldKey.equals(current)) {
-                // already in same queue
-                Map<String, String> placeholders = Map.of("player", target.getName(), "world", wm.getDisplayName(worldKey));
-                if (sender instanceof Player) {
-                    MessageUtil.sendMessage((Player) sender, "force-player-already-in-queue", placeholders);
-                } else {
-                    sender.sendMessage("Player " + target.getName() + " is already in the queue for " + wm.getDisplayName(worldKey));
-                }
+                Map<String, String> ph = new HashMap<String, String>();
+                ph.put("player", target.getName());
+                ph.put("world", wm.getDisplayName(worldKey));
+                if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-player-already-in-queue", ph);
+                else sender.sendMessage("Player " + target.getName() + " is already in queue for " + wm.getDisplayName(worldKey));
                 return true;
             } else {
-                // switching worlds for player
-                if (plugin.getConfigManager().getBoolean("queue.allow-world-switching", true)) {
+                if (plugin.getConfig().getBoolean("queue.allow-world-switching", true)) {
                     plugin.getQueueHandler().removeFromQueue(target);
                     boolean added = plugin.getQueueHandler().addToQueue(target, worldKey);
-                    Map<String, String> placeholders = Map.of("player", target.getName(), "world", wm.getDisplayName(worldKey));
+                    Map<String, String> ph = new HashMap<String, String>();
+                    ph.put("player", target.getName());
+                    ph.put("world", wm.getDisplayName(worldKey));
                     if (added) {
-                        if (sender instanceof Player) {
-                            MessageUtil.sendMessage((Player) sender, "force-switched-player", placeholders);
-                        } else {
-                            sender.sendMessage("Moved " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
-                        }
-                        // target already received join-queue message from addToQueue
+                        if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-switched-player", ph);
+                        else sender.sendMessage("Moved " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
                     } else {
-                        if (sender instanceof Player) {
-                            MessageUtil.sendMessage((Player) sender, "force-failed", placeholders);
-                        } else {
-                            sender.sendMessage("Failed to add " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
-                        }
+                        if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-failed", ph);
+                        else sender.sendMessage("Failed to add " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
                     }
                     return true;
                 } else {
-                    if (sender instanceof Player) {
-                        MessageUtil.sendMessage((Player) sender, "force-switch-disabled");
-                    } else {
-                        sender.sendMessage("World switching for queued players is disabled.");
-                    }
+                    if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-switch-disabled");
+                    else sender.sendMessage("World switching for queued players is disabled.");
                     return true;
                 }
             }
         }
 
-        // Not in queue -> add them (bypass normal permission/cooldown checks)
+        // Not in queue -> add them
         boolean added = plugin.getQueueHandler().addToQueue(target, worldKey);
-        Map<String, String> placeholders = Map.of("player", target.getName(), "world", wm.getDisplayName(worldKey));
+        Map<String, String> ph = new HashMap<String, String>();
+        ph.put("player", target.getName());
+        ph.put("world", wm.getDisplayName(worldKey));
         if (added) {
-            if (sender instanceof Player) {
-                MessageUtil.sendMessage((Player) sender, "force-added-player", placeholders);
-            } else {
-                sender.sendMessage("Added " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
-            }
-            // target will receive join-queue message from addToQueue; optionally also send forced-queue message:
+            if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-added-player", ph);
+            else sender.sendMessage("Added " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
+            // notify target
             MessageUtil.sendMessage(target, "forced-added", Collections.singletonMap("world", wm.getDisplayName(worldKey)));
         } else {
-            if (sender instanceof Player) {
-                MessageUtil.sendMessage((Player) sender, "force-failed", placeholders);
-            } else {
-                sender.sendMessage("Failed to add " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
-            }
+            if (sender instanceof Player) MessageUtil.sendMessage((Player) sender, "force-failed", ph);
+            else sender.sendMessage("Failed to add " + target.getName() + " to the queue for " + wm.getDisplayName(worldKey));
         }
-
         return true;
     }
 
     private boolean hasWorldPermission(Player player, String worldKey) {
+        if (player == null) return false;
         if (player.hasPermission("rtpqueue.world.*")) return true;
 
         WorldManager wm = plugin.getWorldManager();
@@ -341,7 +358,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             return player.hasPermission(configuredPerm);
         }
 
-        String defaultWorld = plugin.getConfigManager().getString("teleport.default-world", "world");
+        String defaultWorld = plugin.getConfig().getString("teleport.default-world", "world");
         if (worldKey.equals(defaultWorld) && player.hasPermission("rtpqueue.use")) return true;
 
         return player.hasPermission("rtpqueue.world." + worldKey.toLowerCase(Locale.ROOT));
@@ -350,9 +367,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         boolean isPlayer = sender instanceof Player;
-        Player player = isPlayer ? (Player) sender : null;
-
-        List<String> completions = new ArrayList<>();
+        List<String> completions = new ArrayList<String>();
         if (args.length == 1) {
             completions.add("world");
             completions.add("leave");
@@ -364,7 +379,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
                 completions.add("force");
             }
 
-            String partial = args[0].toLowerCase(Locale.ROOT);
+            final String partial = args[0].toLowerCase(Locale.ROOT);
             return completions.stream()
                     .filter(s -> s.toLowerCase(Locale.ROOT).startsWith(partial))
                     .sorted()
@@ -373,7 +388,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 2) {
             if (args[0].equalsIgnoreCase("world")) {
-                String partial = args[1].toLowerCase(Locale.ROOT);
+                final String partial = args[1].toLowerCase(Locale.ROOT);
                 Set<String> displayNames = plugin.getWorldManager().getTabCompleteWorldDisplayNames();
                 return displayNames.stream()
                         .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partial))
@@ -382,7 +397,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
             }
 
             if (args[0].equalsIgnoreCase("force")) {
-                String partial = args[1].toLowerCase(Locale.ROOT);
+                final String partial = args[1].toLowerCase(Locale.ROOT);
                 return Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
                         .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partial))
@@ -392,7 +407,7 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 3 && args[0].equalsIgnoreCase("force")) {
-            String partial = args[2].toLowerCase(Locale.ROOT);
+            final String partial = args[2].toLowerCase(Locale.ROOT);
             Set<String> displayNames = plugin.getWorldManager().getTabCompleteWorldDisplayNames();
             return displayNames.stream()
                     .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partial))

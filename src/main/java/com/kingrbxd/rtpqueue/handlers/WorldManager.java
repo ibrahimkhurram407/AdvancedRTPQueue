@@ -29,7 +29,8 @@ public class WorldManager {
         String defaultDisplayName = plugin.getConfigManager().getString("teleport.default-world-display-name", "&aOverworld");
 
         WorldSettings defaultSettings = new WorldSettings(
-                defaultWorld,
+                defaultWorld, // config key (for default we use the bukkit world name as the key)
+                defaultWorld, // bukkit world name
                 stripColorCodes(defaultDisplayName), // FIXED: Strip color codes for tab completion
                 defaultDisplayName,
                 null, // No special permission for default world
@@ -56,7 +57,8 @@ public class WorldManager {
 
                         if (worldName != null) {
                             WorldSettings settings = new WorldSettings(
-                                    worldName,
+                                    key, // config key (e.g. "nether")
+                                    worldName, // bukkit world name
                                     stripColorCodes(displayName), // FIXED: Strip color codes for tab completion
                                     displayName,
                                     worldSection.getString("permission"),
@@ -206,6 +208,7 @@ public class WorldManager {
      * World settings data class
      */
     public static class WorldSettings {
+        private final String worldKey; // config key (e.g. "nether", or for default the bukkit world name)
         private final String bukkitWorldName;
         private final String cleanDisplayName;
         private final String displayName;
@@ -213,8 +216,9 @@ public class WorldManager {
         private final int minX, maxX, minZ, maxZ, minY, maxY;
         private final int maxTeleportAttempts;
 
-        public WorldSettings(String bukkitWorldName, String cleanDisplayName, String displayName, String permission,
+        public WorldSettings(String worldKey, String bukkitWorldName, String cleanDisplayName, String displayName, String permission,
                              int minX, int maxX, int minZ, int maxZ, int minY, int maxY, int maxTeleportAttempts) {
+            this.worldKey = worldKey;
             this.bukkitWorldName = bukkitWorldName;
             this.cleanDisplayName = cleanDisplayName;
             this.displayName = displayName;
@@ -229,6 +233,7 @@ public class WorldManager {
         }
 
         // Getters
+        public String getWorldKey() { return worldKey; }
         public String getBukkitWorldName() { return bukkitWorldName; }
         public String getName() { return bukkitWorldName; }
         public String getCleanDisplayName() { return cleanDisplayName; }

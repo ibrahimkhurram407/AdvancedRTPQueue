@@ -2,6 +2,8 @@ package com.kingrbxd.rtpqueue.handlers;
 
 import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
+import com.kingrbxd.rtpqueue.utils.ParticleUtil;
+import com.kingrbxd.rtpqueue.utils.TeleportEffects;
 import io.papermc.lib.PaperLib;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -17,13 +19,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Fixed TeleportManager with proper safe location finding
+ * TeleportManager
+ *
+ * - Uses Bukkit world names consistently for caching/teleportation
+ * - Keeps players marked in activeSessions until teleport fully completes
+ * - Safer async location search with timeout and sensible fallbacks
+ * - Additional debug/logging to help diagnose "no safe teleport location" situations
  */
 public class TeleportManager {
     private final AdvancedRTPQueue plugin;
-    private final Map<String, Queue<Location>> locationCache = new ConcurrentHashMap<>();
-    private final Map<UUID, TeleportSession> activeSessions = new ConcurrentHashMap<>();
-    private final Set<String> activeSearches = Collections.synchronizedSet(new HashSet<>());
+    private final Map<String, Queue<Location>> locationCache = new ConcurrentHashMap<>(); // key: bukkit world name
+    private final Map<UUID, TeleportSession> activeSessions = new ConcurrentHashMap<>();   // playerUuid -> session
+    private final Set<String> activeSearches = Collections.synchronizedSet(new HashSet<>()); // bukkit world names
     private final Random random = ThreadLocalRandom.current();
 
     public TeleportManager(AdvancedRTPQueue plugin) {
@@ -33,18 +40,19 @@ public class TeleportManager {
 
     /**
      * Start teleportation for matched players
+     * worldKey is the configured key (e.g. "nether", "end" or default world key)
      */
-    public void startTeleportation(List<Player> players, String worldName) {
-        if (players == null || players.isEmpty()) return;
+    public void startTeleportation(List<Player> players, String worldKey) {
+        if (players == null || players.isEmpty() || worldKey == null) return;
 
-        TeleportSession session = new TeleportSession(UUID.randomUUID().toString(), players, worldName);
+        TeleportSession session = new TeleportSession(UUID.randomUUID().toString(), players, worldKey);
 
-        // Register session
+        // Register session for each player (marks them as "in pre-teleport" so they cannot re-join)
         for (Player player : players) {
             activeSessions.put(player.getUniqueId(), session);
         }
 
-        WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldName);
+        WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldKey);
         if (worldSettings == null) {
             cancelSession(session, "invalid-world");
             return;
@@ -64,7 +72,7 @@ public class TeleportManager {
             Map<String, String> placeholders = Map.of(
                     "time", String.valueOf(countdown),
                     "players", String.valueOf(players.size()),
-                    "world", plugin.getWorldManager().getDisplayName(session.getWorldName())
+                    "world", plugin.getWorldManager().getDisplayName(session.getWorldKey())
             );
 
             MessageUtil.sendMessage(player, "match-found", placeholders);
@@ -87,7 +95,7 @@ public class TeleportManager {
             @Override
             public void run() {
                 if (!isSessionValid(session)) {
-                    cancel();
+                    this.cancel();
                     return;
                 }
 
@@ -96,7 +104,7 @@ public class TeleportManager {
                     timeLeft--;
                 } else {
                     executeTeleport(session, worldSettings);
-                    cancel();
+                    this.cancel();
                 }
             }
         }.runTaskTimer(plugin, 0L, 20L);
@@ -112,6 +120,8 @@ public class TeleportManager {
             MessageUtil.sendActionBar(player, "countdown", placeholders);
             MessageUtil.sendTitle(player, "countdown", "countdown", placeholders);
             MessageUtil.playSound(player, "countdown");
+            // show subtle start effect each second so players see something during countdown
+            TeleportEffects.playStart(plugin, player.getLocation());
         }
     }
 
@@ -120,35 +130,46 @@ public class TeleportManager {
      */
     private void executeTeleport(TeleportSession session, WorldManager.WorldSettings worldSettings) {
         if (!isSessionValid(session)) return;
+        if (worldSettings == null) {
+            cancelSession(session, "invalid-world");
+            return;
+        }
 
-        // Try cached location first
-        Location cachedLocation = getCachedLocation(worldSettings.getName());
+        String bukkitWorldName = worldSettings.getBukkitWorldName();
+
+        // Try cached location first (cache keyed by bukkit world name)
+        Location cachedLocation = getCachedLocation(bukkitWorldName);
         if (cachedLocation != null) {
             teleportPlayersAsync(session, cachedLocation);
             return;
         }
 
-        // Find location with better logic
+        // Find location asynchronously
         findLocationAsync(session, worldSettings);
     }
 
     /**
-     * FIXED: Improved async location finding
+     * Improved async location finding
      */
     private void findLocationAsync(TeleportSession session, WorldManager.WorldSettings worldSettings) {
-        String worldName = worldSettings.getName();
+        if (worldSettings == null) {
+            handleSearchFailed(session, null);
+            return;
+        }
 
-        if (activeSearches.contains(worldName)) {
-            // Wait for existing search
+        String bukkitWorldName = worldSettings.getBukkitWorldName();
+
+        if (activeSearches.contains(bukkitWorldName)) {
+            // Wait for existing search to complete and use cached result if available
             waitForLocationSearch(session, worldSettings);
             return;
         }
 
-        activeSearches.add(worldName);
+        activeSearches.add(bukkitWorldName);
 
         new BukkitRunnable() {
             private int attempts = 0;
-            private final int maxAttempts = worldSettings.getMaxTeleportAttempts();
+            private final int maxAttempts = Math.max(1, worldSettings.getMaxTeleportAttempts());
             private final long startTime = System.currentTimeMillis();
             private final long timeout = plugin.getConfigManager().getInt("teleport.search-timeout", 30) * 1000L;
 
@@ -160,23 +181,24 @@ public class TeleportManager {
                         return;
                     }
 
-                    // Check timeout
+                    // check timeout
                     if (System.currentTimeMillis() - startTime > timeout) {
                         handleSearchTimeout(session, worldSettings);
                         cleanup();
                         return;
                     }
 
-                    // Check max attempts
+                    // check attempts
                     if (attempts >= maxAttempts) {
                         handleSearchFailed(session, worldSettings);
                         cleanup();
                         return;
                     }
 
-                    // FIXED: Try multiple locations per tick for better success rate
+                    // try multiple locations per tick for better chance
                     for (int i = 0; i < 5 && attempts < maxAttempts; i++) {
                         Location location = generateSafeLocationSync(worldSettings);
+                        attempts++;
                         if (location != null) {
                             // Found safe location, teleport on main thread
                             new BukkitRunnable() {
@@ -188,9 +210,7 @@ public class TeleportManager {
                             cleanup();
                             return;
                         }
-                        attempts++;
                     }
-
                 } catch (Exception e) {
                     if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                         plugin.getLogger().warning("Error in location search: " + e.getMessage());
@@ -200,29 +220,34 @@ public class TeleportManager {
             }
 
             private void cleanup() {
-                activeSearches.remove(worldName);
-                cancel();
+                activeSearches.remove(bukkitWorldName);
+                this.cancel();
             }
-        }.runTaskTimerAsynchronously(plugin, 0L, 1L); // Faster search (every tick)
+        }.runTaskTimerAsynchronously(plugin, 0L, 1L);
     }
 
     /**
-     * FIXED: Improved safe location generation with better Y-level handling
+     * Generate a candidate safe location synchronously (called from async search thread but accesses world sync APIs carefully).
      */
     private Location generateSafeLocationSync(WorldManager.WorldSettings worldSettings) {
         World world = worldSettings.getBukkitWorld();
         if (world == null) return null;
 
-        // Generate random coordinates
-        int x = random.nextInt(worldSettings.getMaxX() - worldSettings.getMinX() + 1) + worldSettings.getMinX();
-        int z = random.nextInt(worldSettings.getMaxZ() - worldSettings.getMinZ() + 1) + worldSettings.getMinZ();
+        int minX = Math.min(worldSettings.getMinX(), worldSettings.getMaxX());
+        int maxX = Math.max(worldSettings.getMinX(), worldSettings.getMaxX());
+        int minZ = Math.min(worldSettings.getMinZ(), worldSettings.getMaxZ());
+        int maxZ = Math.max(worldSettings.getMinZ(), worldSettings.getMaxZ());
 
-        // Ensure chunk is loaded (synchronous check)
+        if (maxX - minX < 0 || maxZ - minZ < 0) return null;
+
+        int x = random.nextInt(maxX - minX + 1) + minX;
+        int z = random.nextInt(maxZ - minZ + 1) + minZ;
+
+        // avoid expensive loading; if chunk not loaded skip candidate (the search will try others)
         if (!world.isChunkLoaded(x >> 4, z >> 4)) {
             return null;
         }
 
-        // FIXED: Better Y-level calculation
         int y = findSafeY(world, x, z, worldSettings);
         if (y == -1) return null;
 
@@ -236,26 +261,22 @@ public class TeleportManager {
     }
 
     /**
-     * FIXED: Find safe Y coordinate with proper surface detection
+     * Find safe Y coordinate using surface detection
      */
     private int findSafeY(World world, int x, int z, WorldManager.WorldSettings worldSettings) {
         int minY = plugin.getConfigManager().getInt("teleport.min-y", 60);
         int maxY = plugin.getConfigManager().getInt("teleport.max-y", 250);
 
         try {
-            // Start from highest block and work down
             int highestY = world.getHighestBlockYAt(x, z);
-
-            // Clamp to our limits
             int startY = Math.min(maxY, highestY);
 
-            // Search downward for safe spot
+            // search downward from surface
             for (int y = startY; y >= minY; y--) {
                 Block ground = world.getBlockAt(x, y, z);
                 Block feet = world.getBlockAt(x, y + 1, z);
                 Block head = world.getBlockAt(x, y + 2, z);
 
-                // Check if this is a valid surface
                 if (ground.getType().isSolid() &&
                         feet.getType().isAir() &&
                         head.getType().isAir() &&
@@ -264,7 +285,7 @@ public class TeleportManager {
                 }
             }
 
-            // If no surface found, try going up from minY
+            // fallback: search upward from minY
             for (int y = minY; y <= startY; y++) {
                 Block ground = world.getBlockAt(x, y - 1, z);
                 Block feet = world.getBlockAt(x, y, z);
@@ -277,18 +298,17 @@ public class TeleportManager {
                     return y - 1;
                 }
             }
-
         } catch (Exception e) {
             if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                 plugin.getLogger().warning("Error finding Y at " + x + "," + z + ": " + e.getMessage());
             }
         }
 
-        return -1; // No safe Y found
+        return -1;
     }
 
     /**
-     * FIXED: More detailed safety check with better logging
+     * Detailed safety checks
      */
     private boolean isSafeLocationDetailed(Location location) {
         if (location == null || location.getWorld() == null) {
@@ -304,12 +324,10 @@ public class TeleportManager {
         int z = location.getBlockZ();
 
         try {
-            // Check blocks
             Block ground = world.getBlockAt(x, y - 1, z);
             Block feet = world.getBlockAt(x, y, z);
             Block head = world.getBlockAt(x, y + 1, z);
 
-            // Basic safety checks
             if (!ground.getType().isSolid()) {
                 if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                     plugin.getLogger().info("Location unsafe: no solid ground (" + ground.getType() + ")");
@@ -331,7 +349,6 @@ public class TeleportManager {
                 return false;
             }
 
-            // Check unsafe blocks
             if (isUnsafeBlock(ground.getType())) {
                 if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                     plugin.getLogger().info("Location unsafe: unsafe ground block (" + ground.getType() + ")");
@@ -339,7 +356,6 @@ public class TeleportManager {
                 return false;
             }
 
-            // Check surrounding for lava/water
             if (hasUnsafeSurroundings(world, x, y, z)) {
                 if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                     plugin.getLogger().info("Location unsafe: dangerous surroundings");
@@ -347,7 +363,6 @@ public class TeleportManager {
                 return false;
             }
 
-            // Check claim protection (only if enabled)
             if (plugin.getConfigManager().getBoolean("claim-protection.enabled") &&
                     plugin.getClaimProtectionHandler() != null &&
                     plugin.getClaimProtectionHandler().isLocationClaimed(location)) {
@@ -358,10 +373,9 @@ public class TeleportManager {
             }
 
             if (plugin.getConfigManager().getBoolean("plugin.debug")) {
-                plugin.getLogger().info("Location SAFE: " + x + "," + y + "," + z);
+                plugin.getLogger().info("Location SAFE: " + x + "," + y + "," + z + " in " + world.getName());
             }
             return true;
-
         } catch (Exception e) {
             if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                 plugin.getLogger().warning("Error checking location safety: " + e.getMessage());
@@ -370,9 +384,6 @@ public class TeleportManager {
         }
     }
 
-    /**
-     * Check if material is unsafe for teleportation
-     */
     private boolean isUnsafeBlock(Material material) {
         List<String> unsafeBlocks = plugin.getConfigManager().getStringList("teleport.unsafe-blocks");
         String materialName = material.name();
@@ -383,7 +394,6 @@ public class TeleportManager {
             }
         }
 
-        // Additional hardcoded unsafe blocks
         return material == Material.LAVA ||
                 material == Material.MAGMA_BLOCK ||
                 material == Material.FIRE ||
@@ -393,11 +403,7 @@ public class TeleportManager {
                 material == Material.CACTUS;
     }
 
-    /**
-     * Check for dangerous blocks in surrounding area
-     */
     private boolean hasUnsafeSurroundings(World world, int x, int y, int z) {
-        // Check 3x3 area around the location
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 for (int dy = -1; dy <= 2; dy++) {
@@ -416,25 +422,31 @@ public class TeleportManager {
     private void waitForLocationSearch(TeleportSession session, WorldManager.WorldSettings worldSettings) {
         new BukkitRunnable() {
             private int waitTime = 0;
-            private final int maxWait = 100; // 5 seconds
+            private final int maxWait = 100; // ~5 seconds
 
             @Override
             public void run() {
-                if (!activeSearches.contains(worldSettings.getName())) {
-                    // Search completed, try to get location
-                    Location location = getCachedLocation(worldSettings.getName());
+                if (worldSettings == null) {
+                    handleSearchFailed(session, null);
+                    this.cancel();
+                    return;
+                }
+
+                String bukkitWorldName = worldSettings.getBukkitWorldName();
+                if (!activeSearches.contains(bukkitWorldName)) {
+                    Location location = getCachedLocation(bukkitWorldName);
                     if (location != null) {
                         teleportPlayersAsync(session, location);
                     } else {
                         handleSearchFailed(session, worldSettings);
                     }
-                    cancel();
+                    this.cancel();
                     return;
                 }
 
                 if (waitTime >= maxWait) {
                     handleSearchTimeout(session, worldSettings);
-                    cancel();
+                    this.cancel();
                     return;
                 }
 
@@ -455,6 +467,10 @@ public class TeleportManager {
     }
 
     private void handleSearchFailed(TeleportSession session, WorldManager.WorldSettings worldSettings) {
+        if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().info("handleSearchFailed called for worldKey=" + (worldSettings != null ? worldSettings.getWorldKey() : "null"));
+        }
+
         if (plugin.getConfigManager().getBoolean("teleport.allow-fallback-locations")) {
             Location fallback = getFallbackLocation(worldSettings);
             if (fallback != null) {
@@ -462,77 +478,128 @@ public class TeleportManager {
                 return;
             }
         }
+
+        // If configured, force spawn fallback even if not fully 'safe'
+        if (plugin.getConfigManager().getBoolean("teleport.force-spawn-on-failure", false)) {
+            Location forced = getFallbackLocationForce(worldSettings);
+            if (forced != null) {
+                teleportPlayersAsync(session, forced);
+                return;
+            }
+        }
+
         cancelSession(session, "no-safe-locations");
     }
 
     /**
-     * Get fallback location (world spawn)
+     * Get fallback location (world spawn) — returns spawn + 1 if safe
      */
     private Location getFallbackLocation(WorldManager.WorldSettings worldSettings) {
+        if (worldSettings == null) return null;
         World world = worldSettings.getBukkitWorld();
-        if (world == null) return null;
+        if (world == null) {
+            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+                plugin.getLogger().warning("getFallbackLocation: Bukkit world not loaded for " + worldSettings.getBukkitWorldName());
+            }
+            return null;
+        }
 
         Location spawn = world.getSpawnLocation();
         if (spawn != null) {
-            // Make sure spawn is safe
-            if (isSafeLocationDetailed(spawn.clone().add(0, 1, 0))) {
-                return spawn.clone().add(0, 1, 0);
+            Location candidate = spawn.clone().add(0, 1, 0);
+            if (isSafeLocationDetailed(candidate)) {
+                return candidate;
             }
         }
         return null;
     }
 
     /**
-     * Async teleportation using PaperLib
+     * Force-return spawn even if some safety checks fail (final last-resort fallback).
+     */
+    private Location getFallbackLocationForce(WorldManager.WorldSettings worldSettings) {
+        if (worldSettings == null) return null;
+        World world = worldSettings.getBukkitWorld();
+        if (world == null) return null;
+
+        Location spawn = world.getSpawnLocation();
+        if (spawn == null) return null;
+
+        Location candidate = spawn.clone().add(0, 1, 0);
+        // Return spawn even if not fully passing isSafeLocationDetailed (log when debug enabled)
+        if (!isSafeLocationDetailed(candidate) && plugin.getConfigManager().getBoolean("plugin.debug")) {
+            plugin.getLogger().warning("getFallbackLocationForce: returning spawn despite failing safety checks in world " + world.getName());
+        }
+        return candidate;
+    }
+
+    /**
+     * Async teleportation using PaperLib. Important: DO NOT remove players from activeSessions here.
+     * Keep them marked as "in session" until the teleport completes to prevent re-joining the queue.
      */
     private void teleportPlayersAsync(TeleportSession session, Location location) {
         List<Player> validPlayers = getValidPlayers(session);
         if (validPlayers.isEmpty()) return;
 
-        for (Player player : validPlayers) {
-            // Remove from queue and session
-            plugin.getQueueHandler().removeFromQueue(player);
-            activeSessions.remove(player.getUniqueId());
+        if (location == null || location.getWorld() == null) {
+            cancelSession(session, "no-safe-locations");
+            return;
+        }
 
-            // Send pre-teleport messages
+        // Cache location for this world (use bukkit world name)
+        cacheLocationForWorld(location.getWorld().getName());
+
+        for (Player player : validPlayers) {
+            // Remove from queue now (we don't want them to remain in queue while teleporting)
+            plugin.getQueueHandler().removeFromQueue(player);
+
             Map<String, String> placeholders = Map.of(
-                    "world", plugin.getWorldManager().getDisplayName(location.getWorld().getName())
+                    "world", plugin.getWorldManager().getDisplayName(session.getWorldKey())
             );
 
+            // Notify player pre-teleport and show starting particles/sound
             MessageUtil.sendMessage(player, "teleporting", placeholders);
             MessageUtil.playSound(player, "teleport-success");
-            MessageUtil.spawnParticles(player, "teleport-start");
+            ParticleUtil.spawnConfiguredParticle(plugin, player.getLocation(), "teleport-start");
 
-            // Async teleport using PaperLib
+            // Async teleport; when finished execute post-teleport actions on main thread
             PaperLib.teleportAsync(player, location).thenRun(() -> {
-                // Post-teleport effects (main thread)
                 new BukkitRunnable() {
                     @Override
                     public void run() {
-                        MessageUtil.sendMessage(player, "teleported", placeholders);
-                        MessageUtil.sendTitle(player, "teleported", "teleported");
-                        MessageUtil.spawnParticles(player, "teleport-success");
+                        try {
+                            // Post-teleport effects
+                            MessageUtil.sendMessage(player, "teleported");
+                            MessageUtil.sendTitle(player, "teleported", "teleported");
+                            ParticleUtil.spawnConfiguredParticle(plugin, location, "teleport-success");
+                            MessageUtil.playSound(player, "teleport-success");
 
-                        // Apply cooldown
-                        plugin.getCooldownManager().setPostTeleportCooldown(player);
+                            // Apply cooldown
+                            plugin.getCooldownManager().setPostTeleportCooldown(player);
 
-                        // Log if enabled
-                        if (plugin.getConfigManager().getBoolean("advanced.log-teleports")) {
-                            plugin.getLogger().info("Successfully teleported " + player.getName() + " to " +
-                                    location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ() +
-                                    " in " + location.getWorld().getName());
+                            // Remove player from active session map now that teleport fully completed
+                            activeSessions.remove(player.getUniqueId());
+                            session.removePlayer(player.getUniqueId());
+
+                            // Logging
+                            if (plugin.getConfigManager().getBoolean("advanced.log-teleports")) {
+                                plugin.getLogger().info("Successfully teleported " + player.getName() + " to " +
+                                        location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ() +
+                                        " in " + location.getWorld().getName());
+                            }
+                        } catch (Exception e) {
+                            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+                                plugin.getLogger().warning("Error finishing teleport for " + player.getName() + ": " + e.getMessage());
+                            }
                         }
                     }
                 }.runTask(plugin);
             });
         }
-
-        // Cache additional locations for this world
-        cacheLocationForWorld(location.getWorld().getName());
     }
 
-    private Location getCachedLocation(String worldName) {
-        Queue<Location> cached = locationCache.get(worldName);
+    private Location getCachedLocation(String bukkitWorldName) {
+        Queue<Location> cached = locationCache.get(bukkitWorldName);
         if (cached != null && !cached.isEmpty()) {
             Location location = cached.poll();
             if (isSafeLocationDetailed(location)) {
@@ -548,27 +615,42 @@ public class TeleportManager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                for (String worldName : plugin.getWorldManager().getValidWorldNames()) {
-                    cacheLocationForWorld(worldName);
+                // iterate configured valid world keys and convert to bukkit names
+                for (String worldKey : plugin.getWorldManager().getValidWorldNames()) {
+                    WorldManager.WorldSettings ws = plugin.getWorldManager().getWorldSettings(worldKey);
+                    if (ws == null) continue;
+                    cacheLocationForWorld(ws.getBukkitWorldName());
                 }
             }
         }.runTaskAsynchronously(plugin);
     }
 
-    private void cacheLocationForWorld(String worldName) {
-        if (activeSearches.contains(worldName)) return;
+    private void cacheLocationForWorld(String bukkitWorldName) {
+        if (bukkitWorldName == null || activeSearches.contains(bukkitWorldName)) return;
 
         int maxCached = plugin.getConfigManager().getInt("teleport.max-cached-locations", 10);
-        Queue<Location> cached = locationCache.computeIfAbsent(worldName, k -> new LinkedList<>());
+        Queue<Location> cached = locationCache.computeIfAbsent(bukkitWorldName, k -> new LinkedList<>());
 
         if (cached.size() >= maxCached) return;
 
-        WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldName);
-        if (worldSettings == null) return;
-
+        // create async task to generate a few safe locations
         new BukkitRunnable() {
             @Override
             public void run() {
+                World w = Bukkit.getWorld(bukkitWorldName);
+                if (w == null) return;
+                // try to get worldSettings by bukkit name (fallback to any matching config entry)
+                WorldManager.WorldSettings worldSettings = null;
+                // find corresponding config key
+                for (String key : plugin.getWorldManager().getValidWorldNames()) {
+                    WorldManager.WorldSettings ws = plugin.getWorldManager().getWorldSettings(key);
+                    if (ws != null && bukkitWorldName.equalsIgnoreCase(ws.getBukkitWorldName())) {
+                        worldSettings = ws;
+                        break;
+                    }
+                }
+                if (worldSettings == null) return;
+
                 for (int i = 0; i < 3 && cached.size() < maxCached; i++) {
                     Location location = generateSafeLocationSync(worldSettings);
                     if (location != null) {
@@ -593,6 +675,7 @@ public class TeleportManager {
         }
 
         for (Player player : players) {
+            // send specific cancel message if available or fallback to generic
             MessageUtil.sendMessage(player, "cancelled-" + reason);
             MessageUtil.playSound(player, "teleport-cancelled");
         }
@@ -637,11 +720,20 @@ public class TeleportManager {
     }
 
     public boolean hasActiveSession(Player player) {
-        return activeSessions.containsKey(player.getUniqueId());
+        return player != null && activeSessions.containsKey(player.getUniqueId());
+    }
+
+    /**
+     * Return the configured world key for a player's active session, or null if none.
+     */
+    public String getActiveSessionWorld(Player player) {
+        if (player == null) return null;
+        TeleportSession s = activeSessions.get(player.getUniqueId());
+        return s != null ? s.getWorldKey() : null;
     }
 
     public void shutdown() {
-        for (TeleportSession session : activeSessions.values()) {
+        for (TeleportSession session : new ArrayList<>(activeSessions.values())) {
             cancelSession(session, "shutdown");
         }
         activeSessions.clear();
@@ -655,14 +747,13 @@ public class TeleportManager {
     public static class TeleportSession {
         private final String sessionId;
         private final Set<UUID> playerUUIDs;
-        private final String worldName;
+        private final String worldKey; // configured key (e.g. "nether", "end")
         private BukkitTask countdownTask;
 
-        public TeleportSession(String sessionId, List<Player> players, String worldName) {
+        public TeleportSession(String sessionId, List<Player> players, String worldKey) {
             this.sessionId = sessionId;
-            this.worldName = worldName;
+            this.worldKey = worldKey;
             this.playerUUIDs = new HashSet<>();
-
             for (Player player : players) {
                 this.playerUUIDs.add(player.getUniqueId());
             }
@@ -670,7 +761,7 @@ public class TeleportManager {
 
         public String getSessionId() { return sessionId; }
         public Set<UUID> getPlayerUUIDs() { return new HashSet<>(playerUUIDs); }
-        public String getWorldName() { return worldName; }
+        public String getWorldKey() { return worldKey; }
         public BukkitTask getCountdownTask() { return countdownTask; }
         public void setCountdownTask(BukkitTask countdownTask) { this.countdownTask = countdownTask; }
         public void removePlayer(UUID playerUUID) { playerUUIDs.remove(playerUUID); }

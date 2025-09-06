@@ -14,7 +14,10 @@ import org.bukkit.scheduler.BukkitTask;
 
 /**
  * Main plugin class for AdvancedRTPQueue v3.0
- * Complete implementation with all features
+ * Complete implementation with all features, hardened and slightly refactored:
+ *  - safer command registration (null-check)
+ *  - reinitialize MessageUtil on reload
+ *  - defensive logging for debug mode
  */
 public class AdvancedRTPQueue extends JavaPlugin {
     private static AdvancedRTPQueue instance;
@@ -40,7 +43,7 @@ public class AdvancedRTPQueue extends JavaPlugin {
 
         getLogger().info("Starting AdvancedRTPQueue v" + getDescription().getVersion() + "...");
 
-        // Handle configuration migration - THIS IS ALREADY THERE
+        // Handle configuration migration
         if (!handleConfigMigration()) {
             disablePlugin("Failed to handle configuration migration");
             return;
@@ -78,7 +81,7 @@ public class AdvancedRTPQueue extends JavaPlugin {
     }
 
     /**
-     * Handle automatic config migration from old formats - THIS METHOD IS ALREADY INCLUDED
+     * Handle automatic config migration from old formats
      */
     private boolean handleConfigMigration() {
         try {
@@ -125,6 +128,9 @@ public class AdvancedRTPQueue extends JavaPlugin {
             return true;
         } catch (Exception e) {
             getLogger().severe("Failed to initialize configuration: " + e.getMessage());
+            if (configManager != null && configManager.getBoolean("plugin.debug")) {
+                e.printStackTrace();
+            }
             return false;
         }
     }
@@ -153,15 +159,18 @@ public class AdvancedRTPQueue extends JavaPlugin {
     }
 
     /**
-     * Register plugin commands
+     * Register plugin commands (null-safe)
      */
     private void registerCommands() {
         RTPQueueCommand command = new RTPQueueCommand(this);
-        getCommand("rtpqueue").setExecutor(command);
-        getCommand("rtpqueue").setTabCompleter(command);
-
-        if (configManager.getBoolean("plugin.debug")) {
-            getLogger().info("Commands registered successfully");
+        if (getCommand("rtpqueue") != null) {
+            getCommand("rtpqueue").setExecutor(command);
+            getCommand("rtpqueue").setTabCompleter(command);
+            if (configManager.getBoolean("plugin.debug")) {
+                getLogger().info("Commands registered successfully");
+            }
+        } else {
+            getLogger().severe("Command 'rtpqueue' is not defined in plugin.yml. Command registration skipped.");
         }
     }
 
@@ -297,7 +306,9 @@ public class AdvancedRTPQueue extends JavaPlugin {
             // Reload config
             reloadConfig();
             configManager.reload();
-            MessageUtil.clearCache();
+
+            // Reinitialize MessageUtil so prefix/messages are re-read and any caches cleared
+            MessageUtil.initialize(this);
 
             // Reload world settings
             if (worldManager != null) {
@@ -321,7 +332,7 @@ public class AdvancedRTPQueue extends JavaPlugin {
             return true;
         } catch (Exception e) {
             getLogger().severe("Failed to reload plugin: " + e.getMessage());
-            if (configManager.getBoolean("plugin.debug")) {
+            if (configManager != null && configManager.getBoolean("plugin.debug")) {
                 e.printStackTrace();
             }
             return false;
