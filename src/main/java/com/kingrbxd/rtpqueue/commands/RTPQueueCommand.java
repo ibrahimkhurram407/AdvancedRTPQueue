@@ -6,7 +6,7 @@ import com.kingrbxd.rtpqueue.handlers.QueueHandler;
 import com.kingrbxd.rtpqueue.handlers.TeleportHandler;
 import com.kingrbxd.rtpqueue.handlers.WorldManager;
 import com.kingrbxd.rtpqueue.utils.MessageUtil;
-import org.bukkit.Sound;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,220 +14,290 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Main command handler for the RTP Queue plugin.
+ */
 public class RTPQueueCommand implements CommandExecutor, TabCompleter {
     private final AdvancedRTPQueue plugin;
-    private final QueueHandler queueHandler;
-    private final CooldownManager cooldownManager;
-    private final WorldManager worldManager;
 
     public RTPQueueCommand(AdvancedRTPQueue plugin) {
         this.plugin = plugin;
-        this.queueHandler = plugin.getQueueHandler();
-        this.cooldownManager = plugin.getCooldownManager();
-        this.worldManager = plugin.getWorldManager();
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // Reload command - accessible from console
+        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
+            if (!sender.hasPermission("rtpqueue.admin")) {
+                MessageUtil.sendMessage(sender, plugin.getConfig().getString("messages.no-permission"));
+                return true;
+            }
+
+            plugin.reloadConfig();
+            MessageUtil.sendMessage(sender, plugin.getConfig().getString("messages.reload"));
+            return true;
+        }
+
+        // Force queue command - accessible from console
+        if (args.length >= 2 && args[0].equalsIgnoreCase("forcequeue")) {
+            if (!sender.hasPermission("rtpqueue.admin")) {
+                MessageUtil.sendMessage(sender, plugin.getConfig().getString("messages.no-permission"));
+                return true;
+            }
+
+            String playerName = args[1];
+            Player targetPlayer = Bukkit.getPlayerExact(playerName);
+
+            if (targetPlayer == null || !targetPlayer.isOnline()) {
+                MessageUtil.sendMessage(sender, "&#ff0000❌ &cPlayer not found or not online!");
+                return true;
+            }
+
+            // Default world or specified world
+            String worldName = plugin.getWorldManager().getDefaultWorldSettings().getName();
+            if (args.length >= 3) {
+                worldName = args[2];
+                if (!plugin.getWorldManager().isValidWorld(worldName)) {
+                    MessageUtil.sendMessage(sender, plugin.getConfig().getString("messages.invalid-world"));
+                    return true;
+                }
+            }
+
+            // Force add player to queue
+            plugin.getQueueHandler().forceAddToQueue(targetPlayer, worldName);
+
+            // Notify player they were added to queue
+            MessageUtil.sendMessage(targetPlayer, plugin.getConfig().getString("messages.join-queue"));
+            MessageUtil.playSound(targetPlayer, plugin.getConfig().getString("sounds.queue-join"));
+
+            // Notify admin
+            MessageUtil.sendMessage(sender, "&#00ff00✔ &aForced player " + targetPlayer.getName() +
+                    " into queue for world: " + worldName);
+
+            // Try to teleport if enough players
+            TeleportHandler.tryTeleport(targetPlayer);
+
+            return true;
+        }
+
+        // Player-only commands below
         if (!(sender instanceof Player)) {
-            sender.sendMessage("Only players can use this command!");
+            MessageUtil.sendMessage(sender, "&#ff5555⛔ &cThis command can only be used by players!");
             return true;
         }
 
         Player player = (Player) sender;
 
+        // Cancel command
+        if (args.length > 0 && args[0].equalsIgnoreCase("cancel")) {
+            return handleCancelQueue(player);
+        }
+
+        // World command
+        if (args.length > 1 && args[0].equalsIgnoreCase("world")) {
+            String worldName = args[1];
+            return handleJoinWorldQueue(player, worldName);
+        }
+
+        // Default command - join queue for default world
         if (args.length == 0) {
-            handleJoinQueue(player, null);
+            return handleJoinQueue(player);
+        }
+
+        // Unknown command
+        MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.invalid-command"));
+        return true;
+    }
+
+    /**
+     * Handle joining the default world queue.
+     *
+     * @param player The player
+     * @return true always
+     */
+    private boolean handleJoinQueue(Player player) {
+        QueueHandler queueHandler = plugin.getQueueHandler();
+        CooldownManager cooldownManager = plugin.getCooldownManager();
+        WorldManager worldManager = plugin.getWorldManager();
+
+        // Check if player is already in a teleport
+        if (TeleportHandler.hasPendingTeleport(player)) {
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
-            case "cancel":
-                handleLeaveQueue(player);
-                break;
+        // Get default world
+        WorldManager.WorldSettings defaultWorld = worldManager.getDefaultWorldSettings();
+        String worldName = defaultWorld.getName();
 
-            case "reload":
-                handleReload(player);
-                break;
+        // Check if player has permission
+        if (!player.hasPermission("rtpqueue.use")) {
+            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.no-permission"));
+            return true;
+        }
 
-            case "world":
-                if (args.length < 2) {
-                    MessageUtil.sendMessage(player, "&cUsage: /rtpqueue world <worldname>");
-                    return true;
-                }
+        // Check cooldown
+        if (!cooldownManager.canJoinQueue(player, worldName)) {
+            return true;
+        }
 
-                // Handle world names with spaces by joining all remaining arguments
-                String worldName = args[1];
-                if (args.length > 2) {
-                    StringBuilder worldNameBuilder = new StringBuilder(args[1]);
-                    for (int i = 2; i < args.length; i++) {
-                        worldNameBuilder.append(" ").append(args[i]);
-                    }
-                    worldName = worldNameBuilder.toString();
-                }
+        // Add to queue
+        boolean added = queueHandler.addToQueue(player, worldName);
+        if (added) {
+            // Set cooldown
+            cooldownManager.setQueueCooldown(player, worldName);
 
-                handleWorldQueue(player, worldName);
-                break;
+            // Send join message
+            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.join-queue"));
+            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-join"));
 
-            default:
-                MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.invalid-command"));
-                MessageUtil.playSound(player, Sound.valueOf(plugin.getConfig().getString("sounds.error")));
-                break;
+            // Check if queue is ready for teleport
+            TeleportHandler.tryTeleport(player);
+
+            // If not ready, send waiting message
+            if (queueHandler.isInQueue(player)) {
+                MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.waiting-for-opponent"));
+            }
         }
 
         return true;
     }
 
-    private void handleJoinQueue(Player player, String worldName) {
-        // Check if player is already in queue
-        if (queueHandler.isInQueue(player)) {
-            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.already-in-queue"));
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
-            return;
+    /**
+     * Handle joining a specific world queue.
+     *
+     * @param player The player
+     * @param worldName The world name
+     * @return true always
+     */
+    private boolean handleJoinWorldQueue(Player player, String worldName) {
+        QueueHandler queueHandler = plugin.getQueueHandler();
+        CooldownManager cooldownManager = plugin.getCooldownManager();
+        WorldManager worldManager = plugin.getWorldManager();
+
+        // Check if player is already in a teleport
+        if (TeleportHandler.hasPendingTeleport(player)) {
+            return true;
         }
 
-        // Check cooldown before joining queue
+        // Check if world is valid
+        if (!worldManager.isValidWorld(worldName)) {
+            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.invalid-world"));
+            return true;
+        }
+
+        // Check if player has permission for this world
+        WorldManager.WorldSettings worldSettings = worldManager.getWorldSettings(worldName);
+        if (worldSettings.getPermission() != null && !worldSettings.getPermission().isEmpty() &&
+                !player.hasPermission(worldSettings.getPermission())) {
+            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.no-permission"));
+            return true;
+        }
+
+        // Check cooldown
         if (!cooldownManager.canJoinQueue(player, worldName)) {
-            return; // Message already sent by cooldownManager
+            return true;
         }
-
-        // Set cooldown
-        cooldownManager.setQueueCooldown(player, worldName);
 
         // Add to queue
-        queueHandler.addToQueue(player, worldName);
+        boolean added = queueHandler.addToQueue(player, worldName);
+        if (added) {
+            // Set cooldown
+            cooldownManager.setQueueCooldown(player, worldName);
 
-        // Send messages
-        MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.join-queue"));
-        MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.waiting-for-opponent"));
-        MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-join"));
+            // Send join message
+            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.join-queue"));
+            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-join"));
 
-        // Try to teleport
-        TeleportHandler.tryTeleport(player);
-    }
+            // Check if queue is ready for teleport
+            TeleportHandler.tryTeleport(player);
 
-    private void handleWorldQueue(Player player, String worldName) {
-        // Check if specified world exists and player has permission
-        List<WorldManager.WorldSettings> accessibleWorlds = worldManager.getAccessibleWorlds(player);
-        WorldManager.WorldSettings targetWorld = null;
-
-        for (WorldManager.WorldSettings world : accessibleWorlds) {
-            if (world.getName().equalsIgnoreCase(worldName) ||
-                    world.getDisplayName().equalsIgnoreCase(worldName)) {
-                targetWorld = world;
-                break;
+            // If not ready, send waiting message
+            if (queueHandler.isInQueue(player)) {
+                MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.waiting-for-opponent"));
             }
         }
 
-        if (targetWorld == null) {
-            MessageUtil.sendMessage(player, "&cWorld not found or you don't have permission to use it.");
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
-            return;
-        }
-
-        // Join queue with specific world
-        handleJoinQueue(player, targetWorld.getName());
+        return true;
     }
 
-    private void handleLeaveQueue(Player player) {
-        if (queueHandler.isInQueue(player)) {
-            queueHandler.removeFromQueue(player);
-            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.leave-queue"));
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-cleared"));
-        } else {
+    /**
+     * Handle cancelling queue.
+     *
+     * @param player The player
+     * @return true always
+     */
+    private boolean handleCancelQueue(Player player) {
+        QueueHandler queueHandler = plugin.getQueueHandler();
+
+        // Check if player is in queue
+        if (!queueHandler.isInQueue(player)) {
             MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.not-in-queue"));
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
-        }
-    }
-
-    private void handleReload(Player player) {
-        if (!player.hasPermission("rtpqueue.admin")) {
-            MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.no-permission"));
-            MessageUtil.playSound(player, plugin.getConfig().getString("sounds.error"));
-            return;
+            return true;
         }
 
-        // Use the centralized reload method
-        plugin.reload();
-
-        MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.reload"));
-        MessageUtil.sendMessage(player, "&e⚠ For complete configuration changes, a server restart is recommended.");
-        MessageUtil.playSound(player, plugin.getConfig().getString("sounds.queue-cleared"));
+        // Remove from queue
+        queueHandler.removeFromQueue(player);
+        MessageUtil.sendMessage(player, plugin.getConfig().getString("messages.leave-queue"));
+        return true;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> completions = new ArrayList<>();
 
-        if (!(sender instanceof Player)) {
-            return completions;
-        }
-
-        Player player = (Player) sender;
-
         if (args.length == 1) {
             completions.add("cancel");
-
-            // Add "world" option if multi-world is enabled
-            if (plugin.getConfig().getBoolean("teleport.other-worlds.enabled", false)) {
-                completions.add("world");
-            }
+            completions.add("world");
 
             if (sender.hasPermission("rtpqueue.admin")) {
                 completions.add("reload");
+                completions.add("forcequeue");
             }
 
             return filterCompletions(completions, args[0]);
         }
 
-        // Tab complete for worlds - return full display names including spaces
-        if (args.length == 2 && args[0].equalsIgnoreCase("world")) {
-            List<WorldManager.WorldSettings> accessibleWorlds = worldManager.getAccessibleWorlds(player);
-            for (WorldManager.WorldSettings world : accessibleWorlds) {
-                completions.add(world.getDisplayName());
+        if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("world")) {
+                // Suggest valid worlds
+                completions.addAll(plugin.getWorldManager().getValidWorldNames());
+                return filterCompletions(completions, args[1]);
             }
-            return filterCompletions(completions, args[1]);
+
+            if (args[0].equalsIgnoreCase("forcequeue") && sender.hasPermission("rtpqueue.admin")) {
+                // Suggest online players
+                return Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
+                        .collect(Collectors.toList());
+            }
         }
 
-        // Special handling for display names with spaces
-        // If they've started typing a world name with spaces, continue suggesting it
-        if (args.length > 2 && args[0].equalsIgnoreCase("world")) {
-            // Reconstruct what they've typed so far
-            StringBuilder partialName = new StringBuilder(args[1]);
-            for (int i = 2; i < args.length; i++) {
-                partialName.append(" ").append(args[i-1]);
+        if (args.length == 3) {
+            if (args[0].equalsIgnoreCase("forcequeue") && sender.hasPermission("rtpqueue.admin")) {
+                // Suggest valid worlds
+                completions.addAll(plugin.getWorldManager().getValidWorldNames());
+                return filterCompletions(completions, args[2]);
             }
-
-            // Get worlds that might match this partial name
-            String partialNameStr = partialName.toString();
-            List<WorldManager.WorldSettings> accessibleWorlds = worldManager.getAccessibleWorlds(player);
-            for (WorldManager.WorldSettings world : accessibleWorlds) {
-                String displayName = world.getDisplayName();
-                if (displayName.toLowerCase().startsWith(partialNameStr.toLowerCase())) {
-                    // For multi-word names, suggest the next word only
-                    String[] parts = displayName.split(" ");
-                    if (parts.length > args.length - 1) {
-                        completions.add(parts[args.length - 1]);
-                    }
-                }
-            }
-
-            return filterCompletions(completions, args[args.length - 1]);
         }
 
         return completions;
     }
 
-    private List<String> filterCompletions(List<String> completions, String arg) {
-        if (arg.isEmpty()) {
-            return completions;
-        }
-
+    /**
+     * Filter completions based on partial input.
+     *
+     * @param completions The full list of completions
+     * @param partial The partial input to filter by
+     * @return Filtered list of completions
+     */
+    private List<String> filterCompletions(List<String> completions, String partial) {
         return completions.stream()
-                .filter(completion -> completion.toLowerCase().startsWith(arg.toLowerCase()))
+                .filter(s -> s.toLowerCase().startsWith(partial.toLowerCase()))
                 .collect(Collectors.toList());
     }
 }
