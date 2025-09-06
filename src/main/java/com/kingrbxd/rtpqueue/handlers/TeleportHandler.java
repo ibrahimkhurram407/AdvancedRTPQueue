@@ -57,11 +57,16 @@ public class TeleportHandler {
             MessageUtil.playSound(player, plugin.getConfig().getString("sounds.opponent-found"));
         }
 
+        // Create final copies for use in the runnable
+        final List<Player> finalPlayersToTeleport = new ArrayList<>(playersToTeleport);
+        final WorldManager.WorldSettings finalWorldSettings = worldSettings;
+
         // Start teleport countdown
         new BukkitRunnable() {
             @Override
             public void run() {
-                teleportPlayers(playersToTeleport, worldSettings);
+                // Using the correctly named method
+                teleportPlayersToWorld(finalPlayersToTeleport, finalWorldSettings);
             }
         }.runTaskLater(plugin, preTeleportTime * 20L);
     }
@@ -72,7 +77,7 @@ public class TeleportHandler {
      * @param players The players to teleport
      * @param worldSettings The world settings to use
      */
-    private static void teleportPlayers(List<Player> players, WorldManager.WorldSettings worldSettings) {
+    public static void teleportPlayersToWorld(List<Player> players, WorldManager.WorldSettings worldSettings) {
         AdvancedRTPQueue plugin = AdvancedRTPQueue.getInstance();
         QueueHandler queueHandler = plugin.getQueueHandler();
 

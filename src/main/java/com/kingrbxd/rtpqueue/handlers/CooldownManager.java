@@ -6,8 +6,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 
 public class CooldownManager {
     private final AdvancedRTPQueue plugin;
@@ -119,10 +121,27 @@ public class CooldownManager {
     public boolean startPreTeleportCountdown(Player player1, Player player2) {
         int preTeleportTime = plugin.getConfig().getInt("cooldowns.pre-teleport", 5);
 
+        // Get the world name from the queue handler
+        String worldName = plugin.getQueueHandler().getPlayerQueueWorld(player1);
+        if (worldName == null) {
+            worldName = plugin.getWorldManager().getDefaultWorldSettings().getName();
+        }
+
+        // Get the world settings
+        WorldManager.WorldSettings worldSettings = plugin.getWorldManager().getWorldSettings(worldName);
+
+        // Create list of players
+        final List<Player> playersToTeleport = new ArrayList<>();
+        playersToTeleport.add(player1);
+        playersToTeleport.add(player2);
+
+        // Store for later use in runnable
+        final WorldManager.WorldSettings finalWorldSettings = worldSettings;
+
         // Skip countdown if disabled with -1
         if (preTeleportTime <= 0) {
             // Directly teleport players
-            TeleportHandler.teleportPlayers(player1, player2);
+            TeleportHandler.teleportPlayersToWorld(playersToTeleport, finalWorldSettings);
             return true;
         }
 
@@ -174,8 +193,8 @@ public class CooldownManager {
                     teleportTasks.remove(uuid1);
                     teleportTasks.remove(uuid2);
 
-                    // Perform the teleport
-                    TeleportHandler.teleportPlayers(player1, player2);
+                    // Perform the teleport with correct method signature
+                    TeleportHandler.teleportPlayersToWorld(playersToTeleport, finalWorldSettings);
                     cancel();
                 }
             }
