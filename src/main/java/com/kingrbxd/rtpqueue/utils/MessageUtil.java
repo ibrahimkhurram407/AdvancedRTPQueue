@@ -1,130 +1,114 @@
 package com.kingrbxd.rtpqueue.utils;
 
-import com.kingrbxd.rtpqueue.AdvancedRTPQueue;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Sound;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Utility methods for handling messages and color codes.
+ */
 public class MessageUtil {
-    private static AdvancedRTPQueue plugin;
+    // Pattern for RGB hex color codes (#RRGGBB)
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
-    private static final Map<String, String> cachedMessages = new HashMap<>();
 
     /**
-     * Initialize the message util with plugin instance
+     * Send a colored message to a player.
      *
-     * @param pluginInstance The main plugin instance
+     * @param player The player to send the message to
+     * @param message The message to send
      */
-    public static void initialize(AdvancedRTPQueue pluginInstance) {
-        plugin = pluginInstance;
+    public static void sendMessage(Player player, String message) {
+        if (player != null && message != null && !message.isEmpty()) {
+            player.sendMessage(formatMessage(message));
+        }
     }
 
     /**
-     * Clear all cached messages to force reloading from config
+     * Send a colored message to a command sender (player or console).
+     *
+     * @param sender The command sender to send the message to
+     * @param message The message to send
      */
-    public static void clearCachedMessages() {
-        cachedMessages.clear();
+    public static void sendMessage(CommandSender sender, String message) {
+        if (sender != null && message != null && !message.isEmpty()) {
+            sender.sendMessage(formatMessage(message));
+        }
     }
 
     /**
-     * Converts color codes and hex color codes in a string.
+     * Send a message to the action bar of a player.
      *
-     * @param message The message to colorize
-     * @return The colorized message
+     * @param player The player to send the action bar to
+     * @param message The message to display
      */
-    public static String colorize(String message) {
-        if (message == null) return "";
+    public static void sendActionBar(Player player, String message) {
+        if (player != null && message != null && !message.isEmpty()) {
+            player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(formatMessage(message)));
+        }
+    }
 
-        // Check if message is already cached
-        if (cachedMessages.containsKey(message)) {
-            return cachedMessages.get(message);
+    /**
+     * Send a title and subtitle to a player.
+     *
+     * @param player The player to send the title to
+     * @param title The main title text
+     * @param subtitle The subtitle text
+     */
+    public static void sendTitle(Player player, String title, String subtitle) {
+        if (player != null) {
+            String formattedTitle = title != null ? formatMessage(title) : "";
+            String formattedSubtitle = subtitle != null ? formatMessage(subtitle) : "";
+
+            player.sendTitle(formattedTitle, formattedSubtitle, 10, 70, 20);
+        }
+    }
+
+    /**
+     * Play a sound for a player.
+     *
+     * @param player The player to play the sound for
+     * @param soundName The name of the sound to play
+     */
+    public static void playSound(Player player, String soundName) {
+        if (player != null && soundName != null && !soundName.isEmpty()) {
+            try {
+                Sound sound = Sound.valueOf(soundName.toUpperCase());
+                player.playSound(player.getLocation(), sound, 1.0F, 1.0F);
+            } catch (IllegalArgumentException e) {
+                // Ignore invalid sounds
+            }
+        }
+    }
+
+    /**
+     * Format a message with color codes and hex colors.
+     *
+     * @param message The message to format
+     * @return The formatted message
+     */
+    public static String formatMessage(String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
         }
 
-        // Convert hex colors (&#RRGGBB format)
+        // Replace hex color codes
         Matcher matcher = HEX_PATTERN.matcher(message);
         StringBuffer buffer = new StringBuffer();
 
         while (matcher.find()) {
-            String hex = matcher.group(1);
-            matcher.appendReplacement(buffer, ChatColor.of("#" + hex).toString());
+            String hexColor = matcher.group(1);
+            matcher.appendReplacement(buffer, ChatColor.of("#" + hexColor).toString());
         }
 
         matcher.appendTail(buffer);
 
-        // Convert traditional color codes
-        String colorized = ChatColor.translateAlternateColorCodes('&', buffer.toString());
-
-        // Cache the result
-        cachedMessages.put(message, colorized);
-
-        return colorized;
-    }
-
-    /**
-     * Sends a colorized message to a player.
-     *
-     * @param player  The player to send the message to
-     * @param message The message to send
-     */
-    public static void sendMessage(Player player, String message) {
-        if (message == null || message.isEmpty()) return;
-        player.sendMessage(colorize(message));
-    }
-
-    /**
-     * Sends a title and subtitle to a player.
-     *
-     * @param player   The player to send the title to
-     * @param title    The title to send
-     * @param subtitle The subtitle to send
-     */
-    public static void sendTitle(Player player, String title, String subtitle) {
-        player.sendTitle(colorize(title), colorize(subtitle), 10, 40, 10);
-    }
-
-    /**
-     * Sends an action bar message to a player.
-     *
-     * @param player  The player to send the action bar to
-     * @param message The message to send
-     */
-    public static void sendActionBar(Player player, String message) {
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(colorize(message)));
-    }
-
-    /**
-     * Plays a sound for a player using a sound name from config.
-     *
-     * @param player The player to play the sound for
-     * @param sound  The sound name to play
-     */
-    public static void playSound(Player player, String sound) {
-        if (sound == null || sound.isEmpty()) return;
-
-        try {
-            Sound bukkitSound = Sound.valueOf(sound);
-            player.playSound(player.getLocation(), bukkitSound, 1.0f, 1.0f);
-        } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Invalid sound: " + sound);
-        }
-    }
-
-    /**
-     * Plays a sound for a player using a Sound enum.
-     * Overloaded method to support direct Sound enum usage.
-     *
-     * @param player The player to play the sound for
-     * @param sound  The Sound enum to play
-     */
-    public static void playSound(Player player, Sound sound) {
-        if (sound == null) return;
-        player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
+        // Replace standard color codes
+        return ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
 }
