@@ -1,5 +1,5 @@
 name: AdvancedRTPQueue
-version: 2.1
+version: 2.2
 main: com.kingrbxd.rtpqueue.AdvancedRTPQueue
 author: KingRBxD
 description: A highly optimized Random Teleportation Queue plugin with sound effects and bStats.
@@ -9,7 +9,7 @@ softdepend: [GriefPrevention, Factions, Towny, PlaceholderAPI]
 commands:
   rtpqueue:
     description: Join, leave, or manage the RTP queue.
-    usage: /rtpqueue [world <worldname>|cancel|reload]
+    usage: /rtpqueue [world <worldname>|cancel|reload|forcequeue <player> [world]]
     permission: rtpqueue.use
     aliases: [rtpq]
 

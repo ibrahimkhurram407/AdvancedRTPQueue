@@ -1,5 +1,5 @@
 # AdvancedRTPQueue Configuration
-# Version: 2.1
+# Version: 2.2
 
 # General queue settings
 queue:
@@ -8,6 +8,11 @@ queue:
 
   # Time in seconds before an inactive queue is cleared
   clear-interval: 300
+
+  # Allow players to switch worlds when already in queue
+  # If true, using /rtpqueue world <world> will move player from current queue to new world queue
+  # If false, player must first leave the queue before joining a different world queue
+  allow-world-switching: true
 
 # Cooldown settings
 cooldowns:
@@ -41,6 +46,10 @@ teleport:
   safe-teleport: true
   cancel-on-move: true
   max-teleport-attempts: 10
+
+  # Allow using fallback locations (world spawn) when no safe random location found
+  # If false, teleport will be cancelled if no random location can be found
+  allow-fallback-locations: false
 
   # List of block types considered unsafe to teleport onto
   unsafe-blocks:
@@ -137,5 +146,6 @@ sounds:
   teleport: "ENTITY_ENDERMAN_TELEPORT"
   error: "ENTITY_VILLAGER_NO"
 
-# Debug mode - more detailed logging
+# Debug mode - enable to see detailed logs in console
+# Only necessary for troubleshooting issues
 debug: false
