@@ -74,6 +74,16 @@ public final class ConfigMigrator {
             if (!configFile.exists()) {
                 plugin.getLogger().fine("ConfigMigrator: no existing config.yml to migrate.");
                 plugin.saveDefaultConfig();
+                // reload immediately so plugin uses packaged defaults
+                try {
+                    plugin.reloadConfig();
+                } catch (Throwable t) {
+                    plugin.getLogger().warning("ConfigMigrator: reloadConfig() failed: " + t.getMessage());
+                }
+                // Attempt to reinitialize message util (no-op if not applicable)
+                try {
+                    com.kingrbxd.rtpqueue.utils.MessageUtil.initialize(plugin);
+                } catch (Throwable ignored) {}
                 return;
             }
 
@@ -127,6 +137,20 @@ public final class ConfigMigrator {
 
             // Save fresh default config.yml
             plugin.saveDefaultConfig();
+
+            // Immediately reload plugin config so plugin uses new defaults now
+            try {
+                plugin.reloadConfig();
+                plugin.getLogger().info("ConfigMigrator: Plugin config reloaded after migration.");
+            } catch (Throwable t) {
+                plugin.getLogger().warning("ConfigMigrator: reloadConfig() failed after migration: " + t.getMessage());
+            }
+
+            // attempt to reinitialize any static utilities which cache the plugin (best-effort)
+            try {
+                com.kingrbxd.rtpqueue.utils.MessageUtil.initialize(plugin);
+            } catch (Throwable ignored) {}
+
             plugin.getLogger().info("ConfigMigrator: New default config.yml has been created. Old config retained as " + backup.getName());
         } catch (Throwable t) {
             plugin.getLogger().log(Level.SEVERE, "ConfigMigrator failed: " + t.getMessage(), t);
@@ -135,7 +159,7 @@ public final class ConfigMigrator {
 
     // ---- helpers ----
 
-    private static List<String> getMissingRequiredKeys(FileConfiguration cfg, List<String> requiredKeys) {
+    private static List<String> getMissingRequiredKeys(org.bukkit.configuration.file.FileConfiguration cfg, List<String> requiredKeys) {
         List<String> missing = new ArrayList<>();
         if (cfg == null) {
             missing.addAll(requiredKeys);

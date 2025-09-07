@@ -20,6 +20,7 @@ import java.util.regex.Pattern;
  * Supported color formats:
  *  - Legacy & codes (e.g. &aHello)
  *  - Hex codes anywhere in text as #RRGGBB (e.g. "This is #ff0000red")
+ *  - Hex codes prefixed with ampersand like &#RRGGBB (e.g. "This is &#ff0000red")
  *  - Also supports tags like <#ff0000> if used (the regex looks for #RRGGBB anywhere)
  *
  * Behavior:
@@ -30,7 +31,8 @@ import java.util.regex.Pattern;
  */
 public final class MessageUtil {
     private static AdvancedRTPQueue plugin;
-    private static final Pattern HEX_PATTERN = Pattern.compile("#([A-Fa-f0-9]{6})");
+    // Accept both "#RRGGBB" and "&#RRGGBB" (the optional leading '&' is consumed so it won't remain in the output)
+    private static final Pattern HEX_PATTERN = Pattern.compile("&?#([A-Fa-f0-9]{6})");
 
     private MessageUtil() { /* static helper */ }
 
@@ -67,7 +69,7 @@ public final class MessageUtil {
     /**
      * Colorize a message:
      *  - translate legacy '&' codes
-     *  - convert hex codes (#RRGGBB) to platform ChatColor sequences
+     *  - convert hex codes (#RRGGBB or &#RRGGBB) to platform ChatColor sequences
      *
      * Implementation note: org.bukkit.ChatColor.of(...) may not exist at compile time depending on the API version
      * you're compiling against. To avoid a compile-time error we call Bukkit's ChatColor.of via reflection and fall

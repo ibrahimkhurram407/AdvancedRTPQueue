@@ -1,34 +1,36 @@
 # =====================================
-# AdvancedRTPQueue v3.0 Configuration
+# AdvancedRTPQueue v3.0 Configuration (new HEX color scheme)
 # =====================================
 # Professional RTP Queue system with safe teleportation
+#
+# Color format: use "&#RRGGBB" for hex colors (MessageUtil supports both "#RRGGBB" and "&#RRGGBB").
+# New color scheme: primary teal (&#00B5A3), accent amber (&#FFC857), neutral slate (&#AAB7C4).
 
 plugin:
   debug: false
-  prefix: "&6[AdvancedRTPQueue]&r "   # Prefix added to messages (supports color codes). Empty to disable.
+  prefix: "&#00B5A3[AdvancedRTPQueue]&r "   # Teal primary prefix
 
 queue:
   required-players: 2
-  clear-interval: 300            # seconds between automatic queue clear maintenance runs
+  clear-interval: 300
   allow-world-switching: true
   auto-join-on-login: false
 
 cooldowns:
-  queue-join: 60                 # global join cooldown (seconds)
-  queue-leave: 10                # leave cooldown (seconds)
-  pre-teleport: 5                # countdown before teleport (seconds)
-  post-teleport: 120             # cooldown after being teleported (seconds)
+  queue-join: 60
+  queue-leave: 10
+  pre-teleport: 5
+  post-teleport: 120
   per-world-cooldown:
     enabled: false
-    # Use Bukkit world names here (not display names). Example names below:
     worlds:
-      world: 120                 # overworld (bukkit name)
-      world_nether: 180          # nether (bukkit name)
-      world_the_end: 180         # end (bukkit name)
+      world: 120
+      world_nether: 180
+      world_the_end: 180
 
 teleport:
-  default-world: "world"                         # Bukkit world name used as default
-  default-world-display-name: "&aOverworld"      # Display name used in messages/tab
+  default-world: "world"
+  default-world-display-name: "&#00B5A3Overworld"
   min-x: -1000
   max-x: 1000
   min-z: -1000
@@ -36,8 +38,8 @@ teleport:
   min-y: 60
   max-y: 250
   safe-teleport: true
-  cancel-on-move: true
-  cancel-on-damage: false
+  cancel-on-move: false
+  cancel-on-damage: true
   cancel-on-chat: false
   max-attempts: 100
   search-timeout: 45
@@ -65,7 +67,7 @@ teleport:
     worlds:
       nether:
         name: "world_nether"
-        display-name: "&cThe Nether"
+        display-name: "&#FF6B6BThe Nether"         # muted red for danger feel
         permission: "rtpqueue.world.nether"
         min-x: -500
         max-x: 500
@@ -76,7 +78,7 @@ teleport:
         max-attempts: 75
       end:
         name: "world_the_end"
-        display-name: "&dThe End"
+        display-name: "&#9B59B6The End"             # soft purple
         permission: "rtpqueue.world.end"
         min-x: -200
         max-x: 200
@@ -97,80 +99,75 @@ ui:
   action-bar:
     enabled: true
     update-interval: 20
-    queue-wait: "&7Waiting for &e{needed} &7more player(s)... &7(&e{current}&7/&e{required}&7)"
-    countdown: "&6Teleporting in &c{time} &6seconds..."
+    queue-wait: "&#AAB7C4Waiting for &#FFC857{needed} &#AAB7C4more player(s)... &#AAB7C4(&#FFC857{current}&#AAB7C4/&#FFC857{required}&#AAB7C4)"
+    countdown: "&#00B5A3Teleporting in &#FFC857{time} &#00B5A3seconds..."
 
 titles:
   queue-joined:
-    title: "&6Queue Joined"
-    subtitle: "&7Waiting for &e{needed} &7more player(s)"
+    title: "&#00B5A3Queue Joined"
+    subtitle: "&#AAB7C4Waiting for &#FFC857{needed} &#AAB7C4more player(s)"
     fade-in: 10
     stay: 40
     fade-out: 10
 
   match-found:
-    title: "&aMatch Found!"
-    subtitle: "&7Teleporting in &c{time} &7seconds"
+    title: "&#00B5A3Match Found!"
+    subtitle: "&#AAB7C4Teleporting in &#FFC857{time} &#AAB7C4seconds"
     fade-in: 5
     stay: 30
     fade-out: 10
 
   countdown:
-    title: "&c{time}"
-    subtitle: "&7Get ready..."
+    title: "&#FFC857{time}"
+    subtitle: "&#AAB7C4Get ready..."
     fade-in: 0
     stay: 25
     fade-out: 5
 
   teleported:
-    title: "&aTeleported!"
-    subtitle: "&7Good luck exploring!"
+    title: "&#00B5A3Teleported!"
+    subtitle: "&#AAB7C4Good luck exploring!"
     fade-in: 10
     stay: 30
     fade-out: 20
 
 messages:
-  # Basic queue messages
-  join-queue: "&a✔ You joined the &e{world} &aqueue! &7({current}/{required})"
-  leave-queue: "&c❌ You left the queue."
-  already-in-queue: "&e⚠ You're already in the queue!"
-  not-in-queue: "&c⚠ You're not in the queue."
-  match-found: "&a🎯 Match found! Teleporting in &c{time} &aseconds..."
-  teleporting: "&6🚀 Teleporting to &e{world}&6..."   # reused to tell players they are currently teleporting
-  cannot-join-while-teleporting: "&c⚠ You cannot join a queue while teleporting!"
-  teleported: "&a✅ Successfully teleported!"
-  no-permission: "&c⛔ No permission."
-  no-permission-world: "&c⛔ No permission for world &e{world}&c."
-  invalid-world: "&c⚠ Invalid world: &e{world}"
-  invalid-command: "&c❓ Usage: &e/rtpqueue [world <name>|leave|reload|clear|force <player> [world]]"
-  invalid-player: "&c⚠ Player &e{player} &cis not online."
+  join-queue: "&#00B5A3✔ You joined the &#FFC857{world} &#00B5A3queue! &#AAB7C4({current}/{required})"
+  leave-queue: "&#FF6B6B❌ You left the queue."
+  already-in-queue: "&#FFC857⚠ You're already in the queue!"
+  not-in-queue: "&#FF6B6B⚠ You're not in the queue."
+  match-found: "&#00B5A3🎯 Match found! Teleporting in &#FFC857{time} &#00B5A3seconds..."
+  teleporting: "&#00B5A3🚀 Teleporting to &#FFC857{world}&#00B5A3..."
+  cannot-join-while-teleporting: "&#FF6B6B⚠ You cannot join a queue while teleporting!"
+  teleported: "&#00B5A3✅ Successfully teleported!"
+  no-permission: "&#FF6B6B⛔ No permission."
+  no-permission-world: "&#FF6B6B⛔ No permission for world &#FFC857{world}&#FF6B6B."
+  invalid-world: "&#FF6B6B⚠ Invalid world: &#FFC857{world}"
+  invalid-command: "&#FF6B6B❓ Usage: &#FFC857/rtpqueue [world <name>|leave|reload|clear|force <player> [world]]"
+  invalid-player: "&#FF6B6B⚠ Player &#FFC857{player} &#FF6B6Bis not online."
 
-  # Reload / admin
-  reload-success: "&a🔄 Configuration reloaded!"
-  reload-failed: "&c❌ Reload failed: &e{error}"
-  queue-cleared: "&c🧹 All queues cleared."
+  reload-success: "&#00B5A3🔄 Configuration reloaded!"
+  reload-failed: "&#FF6B6B❌ Reload failed: &#FFC857{error}"
+  queue-cleared: "&#FF6B6B🧹 All queues cleared."
 
-  # Teleport cancellations / failures
-  teleport-failed: "&c❌ Teleport failed! No safe location found."
-  cancelled-moved: "&c❌ Teleport cancelled - you moved!"
-  cancelled-damage: "&c❌ Teleport cancelled - you took damage!"
-  cancelled-chat: "&c❌ Teleport cancelled - you chatted!"
-  cancelled-timeout: "&c❌ Teleport cancelled - location search timed out!"
-  cancelled-shutdown: "&c❌ Teleport cancelled - server restarting!"
+  teleport-failed: "&#FF6B6B❌ Teleport failed! No safe location found."
+  cancelled-moved: "&#FF6B6B❌ Teleport cancelled - you moved!"
+  cancelled-damage: "&#FF6B6B❌ Teleport cancelled - you took damage!"
+  cancelled-chat: "&#FF6B6B❌ Teleport cancelled - you chatted!"
+  cancelled-timeout: "&#FF6B6B❌ Teleport cancelled - location search timed out!"
+  cancelled-shutdown: "&#FF6B6B❌ Teleport cancelled - server restarting!"
 
-  # Cooldowns
-  cooldown-active: "&c⏰ Cooldown active! Wait &e{time}&c."
-  cooldown-queue-join: "&c⏰ Queue join cooldown! Wait &e{time}&c."
-  cooldown-post-teleport: "&c⏰ Post-teleport cooldown! Wait &e{time}&c."
+  cooldown-active: "&#FF6B6B⏰ Cooldown active! Wait &#FFC857{time}&#FF6B6B."
+  cooldown-queue-join: "&#FF6B6B⏰ Queue join cooldown! Wait &#FFC857{time}&#FF6B6B."
+  cooldown-post-teleport: "&#FF6B6B⏰ Post-teleport cooldown! Wait &#FFC857{time}&#FF6B6B."
 
-  # Force command messages (administrative)
-  force-added-player: "&a✔ Added &e{player} &ato the &e{world} &aqueue."
-  forced-added: "&a✔ You were added to the &e{world} &aqueue by an admin."
-  force-switched-player: "&a✔ Moved &e{player} &ato the &e{world} &aqueue."
-  force-player-already-in-queue: "&e⚠ &e{player} &eis already in the queue for &e{world}."
-  force-failed: "&c❌ Failed to add &e{player} &cto the &e{world} &cqueue."
-  force-switch-disabled: "&c⚠ Cannot move player — world switching for queued players is disabled."
-  force-success: "&a✔ Forced action completed for &e{player} &7(&e{world}&7)."
+  force-added-player: "&#00B5A3✔ Added &#FFC857{player} &#00B5A3to the &#FFC857{world} &#00B5A3queue."
+  forced-added: "&#00B5A3✔ You were added to the &#FFC857{world} &#00B5A3queue by an admin."
+  force-switched-player: "&#00B5A3✔ Moved &#FFC857{player} &#00B5A3to the &#FFC857{world} &#00B5A3queue."
+  force-player-already-in-queue: "&#FFC857⚠ &#FFC857{player} &#FFC857is already in the queue for &#FFC857{world}."
+  force-failed: "&#FF6B6B❌ Failed to add &#FFC857{player} &#FF6B6Bto the &#FFC857{world} &#FF6B6Bqueue."
+  force-switch-disabled: "&#FF6B6B⚠ Cannot move player — world switching for queued players is disabled."
+  force-success: "&#00B5A3✔ Forced action completed for &#FFC857{player} &#AAB7C4(&#FFC857{world}&#AAB7C4)."
 
 sounds:
   enabled: true
@@ -205,7 +202,7 @@ sounds:
 
 particles:
   enabled: true
-  visible-range: 64          # players within this radius will see particles (used for Player-based spawn fallback)
+  visible-range: 64
   teleport-start:
     particle: "PORTAL"
     count: 50
