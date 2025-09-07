@@ -149,14 +149,15 @@ public class WorldManager {
     public Set<String> getTabCompleteWorldDisplayNames() {
         Set<String> tabNames = new HashSet<>();
         for (Map.Entry<String, WorldSettings> entry : worldSettings.entrySet()) {
-            if (isValidWorld(entry.getKey())) {
-                WorldSettings settings = entry.getValue();
-                String clean = settings.getCleanDisplayName();
-                if (clean != null && !clean.isEmpty()) {
-                    tabNames.add(clean);
-                } else {
-                    tabNames.add(entry.getKey());
-                }
+            WorldSettings settings = entry.getValue();
+            if (settings == null) continue;
+
+            // Use the clean (color-stripped) display name if present, else the config key
+            String clean = settings.getCleanDisplayName();
+            if (clean != null && !clean.isEmpty()) {
+                tabNames.add(clean);
+            } else {
+                tabNames.add(entry.getKey());
             }
         }
         return tabNames;
@@ -192,7 +193,9 @@ public class WorldManager {
                 return e.getKey();
             }
             // also accept the configured bukkit world name
-            if (s.getBukkitWorldName().equalsIgnoreCase(input)) {
+            String normInput = input.replaceAll("[^A-Za-z0-9]", "").toLowerCase();
+            String normBukkit = s.getBukkitWorldName().replaceAll("[^A-Za-z0-9]", "").toLowerCase();
+            if (normBukkit.equals(normInput)) {
                 return e.getKey();
             }
         }
