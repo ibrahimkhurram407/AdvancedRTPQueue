@@ -257,7 +257,9 @@ public class TeleportManager {
             plugin.getLogger().info("Testing location: " + x + "," + y + "," + z + " in " + world.getName());
         }
 
-        return isSafeLocationDetailed(location) ? location : null;
+        return plugin.getConfigManager().getBoolean("teleport.safe-teleport", true)
+                ? (isSafeLocationDetailed(location) ? location : null)
+                : location;
     }
 
     /**
@@ -311,6 +313,9 @@ public class TeleportManager {
      * Detailed safety checks
      */
     private boolean isSafeLocationDetailed(Location location) {
+        if (!plugin.getConfigManager().getBoolean("teleport.safe-teleport", true)) {
+            return true;
+        }
         if (location == null || location.getWorld() == null) {
             if (plugin.getConfigManager().getBoolean("plugin.debug")) {
                 plugin.getLogger().info("Location check failed: null location or world");
