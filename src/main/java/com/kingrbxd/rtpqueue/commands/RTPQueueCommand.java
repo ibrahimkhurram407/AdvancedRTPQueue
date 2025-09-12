@@ -389,8 +389,8 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2) {
             if (args[0].equalsIgnoreCase("world")) {
                 final String partial = args[1].toLowerCase(Locale.ROOT);
-                Set<String> displayNames = plugin.getWorldManager().getTabCompleteWorldDisplayNames();
-                return displayNames.stream()
+                Set<String> keys = plugin.getWorldManager().getValidWorldNames();
+                return keys.stream()
                         .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partial))
                         .sorted()
                         .collect(Collectors.toList());
@@ -408,8 +408,8 @@ public class RTPQueueCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 3 && args[0].equalsIgnoreCase("force")) {
             final String partial = args[2].toLowerCase(Locale.ROOT);
-            Set<String> displayNames = plugin.getWorldManager().getTabCompleteWorldDisplayNames();
-            return displayNames.stream()
+            Set<String> keys = plugin.getWorldManager().getValidWorldNames();
+            return keys.stream()
                     .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partial))
                     .sorted()
                     .collect(Collectors.toList());
