@@ -21,3 +21,5 @@ rad.json
 #Test results file
 TestResults.xml
 dependency-reduced-pom.xml
+target/
+fullcode.txt

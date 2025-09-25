@@ -68,23 +68,32 @@
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+
+        <!-- PlaceholderAPI official repo (hosts 2.11.6) -->
         <repository>
-            <id>sonatype</id>
-            <url>https://oss.sonatype.org/content/groups/public/</url>
+            <id>placeholderapi-repo</id>
+            <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
         </repository>
+
+        <!-- (Optional) fallback mirror -->
         <repository>
-            <id>glaremasters repo</id>
-            <url>https://repo.glaremasters.me/repository/towny/</url>
+            <id>minebench</id>
+            <url>https://repo.minebench.de/</url>
         </repository>
+
+        <!-- Keep if you still use GP/Towny snapshots -->
+        <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+
         <repository>
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
-        <repository>
-            <id>placeholderapi</id>
-            <url>https://repo.extendedclip.com/content/repositories/public/</url>
-        </repository>
+
     </repositories>
+
 
     <dependencies>
         <!-- Paper API -->
@@ -95,7 +104,15 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- bStats Metrics -->
+        <!-- PlaceholderAPI (single entry) -->
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <version>2.11.6</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- bStats -->
         <dependency>
             <groupId>org.bstats</groupId>
             <artifactId>bstats-bukkit</artifactId>
@@ -103,38 +120,31 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- GriefPrevention -->
+        <!-- GriefPrevention via Jitpack -->
         <dependency>
-            <groupId>com.github.GriefPrevention</groupId>
+            <groupId>com.github.TechFortress</groupId>
             <artifactId>GriefPrevention</artifactId>
             <version>16.18.2</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- Towny -->
+        <!-- Towny via Jitpack -->
         <dependency>
-            <groupId>com.palmergames.bukkit.towny</groupId>
-            <artifactId>towny</artifactId>
+            <groupId>com.github.TownyAdvanced</groupId>
+            <artifactId>Towny</artifactId>
             <version>0.101.2.0</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- SaberFactions -->
+
+        <!-- SaberFactions (installed locally once) -->
         <dependency>
             <groupId>com.kingrbxd</groupId>
             <artifactId>SaberFactions</artifactId>
             <version>4.1.6-BETA</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/SaberFactions.jar</systemPath>
         </dependency>
 
-        <!-- PlaceholderAPI -->
-        <dependency>
-            <groupId>me.clip</groupId>
-            <artifactId>placeholderapi</artifactId>
-            <version>2.11.6</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- PaperLib (optional util) -->
         <dependency>
             <groupId>io.papermc</groupId>
             <artifactId>paperlib</artifactId>
@@ -142,4 +152,5 @@
             <scope>compile</scope>
         </dependency>
     </dependencies>
+
 </project>

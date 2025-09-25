@@ -243,7 +243,22 @@ public class TeleportManager {
         int x = random.nextInt(maxX - minX + 1) + minX;
         int z = random.nextInt(maxZ - minZ + 1) + minZ;
 
-        // avoid expensive loading; if chunk not loaded skip candidate (the search will try others)
+        // If safe-teleport is OFF, don't require loaded chunks or ground.
+        if (!plugin.getConfigManager().getBoolean("teleport.safe-teleport", true)) {
+            int minY = plugin.getConfigManager().getInt("teleport.min-y", 60);
+            int maxY = plugin.getConfigManager().getInt("teleport.max-y", 250);
+
+            // Try to pick a sensible Y: use spawn Y if present, otherwise minY.
+            int spawnY = world.getSpawnLocation() != null ? world.getSpawnLocation().getBlockY() : minY;
+            int y = Math.min(maxY, Math.max(minY, spawnY));
+
+            if (plugin.getConfigManager().getBoolean("plugin.debug")) {
+                plugin.getLogger().info("Unsafe mode: using raw location " + x + "," + y + "," + z + " in " + world.getName());
+            }
+            return new Location(world, x + 0.5, y, z + 0.5);
+        }
+
+        // ---- original safe path (requires chunk + ground) ----
         if (!world.isChunkLoaded(x >> 4, z >> 4)) {
             return null;
         }
@@ -257,10 +272,9 @@ public class TeleportManager {
             plugin.getLogger().info("Testing location: " + x + "," + y + "," + z + " in " + world.getName());
         }
 
-        return plugin.getConfigManager().getBoolean("teleport.safe-teleport", true)
-                ? (isSafeLocationDetailed(location) ? location : null)
-                : location;
+        return isSafeLocationDetailed(location) ? location : null;
     }
+
 
     /**
      * Find safe Y coordinate using surface detection
